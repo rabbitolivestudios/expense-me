@@ -68,7 +68,7 @@ describe("reconciliation", () => {
 
     expect(charges).toEqual([
       {
-        id: "statement-1-0",
+        id: "charge-corporate-visa-2026-05-21-2026-05-22-taxi-parisien-42-00-eur-45-60",
         statementImportId: "statement-1",
         cardLabel: "Corporate Visa",
         transactionDate: "2026-05-21",
@@ -125,6 +125,24 @@ describe("reconciliation", () => {
     expect(charge.finalUsdAmount).toBe(47.45);
     expect(charge.fxRate).toBe(1.1);
     expect(charge.foreignTransactionFee).toBe(1.25);
+  });
+
+  it("uses stable statement charge ids across repeated imports", () => {
+    const csv = [
+      "Transaction Date,Posted Date,Description,Amount,Currency,Final USD",
+      "2026-05-23,2026-05-24,HOTEL CHICAGO,284.20,USD,284.20"
+    ].join("\n");
+    const [firstCharge] = parseStatementCsv(csv, "statement-1", "Corporate Visa");
+    const [secondCharge] = parseStatementCsv(csv, "statement-2", "Corporate Visa");
+
+    expect(secondCharge.id).toBe(firstCharge.id);
+
+    const firstResult = reconcileStatementCharges([], [firstCharge]);
+    const secondResult = reconcileStatementCharges(firstResult.expenses, [secondCharge]);
+
+    expect(firstResult.createdExpenseIds).toHaveLength(1);
+    expect(secondResult.createdExpenseIds).toHaveLength(0);
+    expect(secondResult.expenses).toHaveLength(1);
   });
 
   it("turns unmatched statement charges into reviewable missed-charge expenses", () => {

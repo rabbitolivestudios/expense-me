@@ -61,6 +61,38 @@ function rowError(index: number, message: string) {
   return new Error(`Statement CSV row ${index + 2}: ${message}`);
 }
 
+function chargeIdPart(value: string | number | undefined) {
+  return String(value ?? "none")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "") || "none";
+}
+
+function moneyIdPart(value: number) {
+  return value.toFixed(2).replace(".", "-");
+}
+
+function stableChargeId(input: {
+  cardLabel: string;
+  transactionDate: string;
+  postedDate?: string;
+  description: string;
+  originalAmount: number;
+  originalCurrency: string;
+  finalUsdAmount: number;
+}) {
+  return [
+    "charge",
+    chargeIdPart(input.cardLabel),
+    chargeIdPart(input.transactionDate),
+    chargeIdPart(input.postedDate),
+    chargeIdPart(input.description),
+    moneyIdPart(input.originalAmount),
+    chargeIdPart(input.originalCurrency),
+    moneyIdPart(input.finalUsdAmount)
+  ].join("-");
+}
+
 function requireText(row: CsvRow, index: number, headers: string[], label: string) {
   const value = readField(row, headers);
   if (!value) throw rowError(index, `${label} is required.`);
@@ -128,18 +160,19 @@ export function parseStatementCsv(csv: string, statementImportId: string, cardLa
           : undefined);
     const transactionDate = normalizeRequiredDate(row, index);
     const postedDate = normalizeDate(readField(row, postedDateHeaders));
+    const description = requireText(row, index, descriptionHeaders, "Description");
 
     if (finalUsdAmount === undefined) {
       throw rowError(index, "Final USD or FX Rate is required for non-USD charges.");
     }
 
     return {
-      id: `${statementImportId}-${index}`,
+      id: stableChargeId({ cardLabel, transactionDate, postedDate, description, originalAmount, originalCurrency, finalUsdAmount }),
       statementImportId,
       cardLabel,
       transactionDate,
       postedDate,
-      description: requireText(row, index, descriptionHeaders, "Description"),
+      description,
       originalAmount,
       originalCurrency,
       finalUsdAmount,

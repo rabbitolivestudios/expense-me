@@ -1,5 +1,5 @@
 import { ArrowLeft, Camera, Check, CreditCard, FileText, Keyboard, MailCheck, RotateCcw } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState, type ChangeEvent } from "react";
 import type { ArtifactType, Expense, IntakeSource, ReceiptArtifact } from "../../domain/types";
 import { createExpenseFromExtractedText } from "../extraction/extractionPipeline";
 import { extractReceiptTextFromFile, type ExtractionMethod } from "../extraction/fileTextExtraction";
@@ -135,19 +135,34 @@ export function CaptureSheet({ onClose, onExpenseCreated, onOpenCards, onSyncEma
   const [syncingEmail, setSyncingEmail] = useState(false);
   const [pendingScan, setPendingScan] = useState<PendingScan | null>(null);
   const [draftExpense, setDraftExpense] = useState<Expense | null>(null);
+  const [scanSubmitted, setScanSubmitted] = useState(false);
+  const scanRequestIdRef = useRef(0);
+  const scanSubmittedRef = useRef(false);
 
   async function handleFile(file: File | undefined, sourceType: IntakeSource) {
     if (!file) return;
+    const requestId = scanRequestIdRef.current + 1;
+    scanRequestIdRef.current = requestId;
+    scanSubmittedRef.current = false;
+    setScanSubmitted(false);
     setStatusMessage(sourceType === "Camera" ? "Scanning receipt..." : "Reading receipt...");
 
     try {
       const imported = await createExpenseFromFile(file, sourceType);
+      if (requestId !== scanRequestIdRef.current) return;
       setPendingScan(imported);
       setDraftExpense(imported.expense);
       setStatusMessage("");
     } catch (error) {
+      if (requestId !== scanRequestIdRef.current) return;
       setStatusMessage(error instanceof Error ? error.message : "Receipt scan failed. Try again or enter it manually.");
     }
+  }
+
+  function handleReceiptInputChange(event: ChangeEvent<HTMLInputElement>, sourceType: IntakeSource) {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = "";
+    void handleFile(file, sourceType);
   }
 
   function updateDraft(patch: Partial<Expense>) {
@@ -177,7 +192,9 @@ export function CaptureSheet({ onClose, onExpenseCreated, onOpenCards, onSyncEma
   }
 
   function confirmScan() {
-    if (!pendingScan || !draftExpense) return;
+    if (!pendingScan || !draftExpense || scanSubmittedRef.current) return;
+    scanSubmittedRef.current = true;
+    setScanSubmitted(true);
     const merchant = draftExpense.merchant?.trim();
     const description = merchant || draftExpense.description || "Imported receipt";
 
@@ -193,6 +210,9 @@ export function CaptureSheet({ onClose, onExpenseCreated, onOpenCards, onSyncEma
   }
 
   function clearPendingScan() {
+    scanRequestIdRef.current += 1;
+    scanSubmittedRef.current = false;
+    setScanSubmitted(false);
     setPendingScan(null);
     setDraftExpense(null);
     setStatusMessage("");
@@ -294,7 +314,7 @@ export function CaptureSheet({ onClose, onExpenseCreated, onOpenCards, onSyncEma
             <RotateCcw aria-hidden="true" />
             Retake
           </button>
-          <button className="confirm-scan" type="button" onClick={confirmScan}>
+          <button className="confirm-scan" type="button" onClick={confirmScan} disabled={scanSubmitted}>
             <Check aria-hidden="true" />
             Confirm Scan
           </button>
@@ -324,7 +344,7 @@ export function CaptureSheet({ onClose, onExpenseCreated, onOpenCards, onSyncEma
           accept="image/*"
           capture="environment"
           aria-label="Camera receipt file"
-          onChange={(event) => void handleFile(event.target.files?.[0], "Camera")}
+          onChange={(event) => handleReceiptInputChange(event, "Camera")}
         />
       </label>
 
@@ -337,7 +357,7 @@ export function CaptureSheet({ onClose, onExpenseCreated, onOpenCards, onSyncEma
             type="file"
             accept="image/*,application/pdf,text/plain"
             aria-label="Upload PDF or image file"
-            onChange={(event) => void handleFile(event.target.files?.[0], "Upload")}
+            onChange={(event) => handleReceiptInputChange(event, "Upload")}
           />
         </label>
         <button type="button" onClick={() => void checkEmail()} disabled={syncingEmail}>

@@ -12,6 +12,12 @@ describe("receipt parser", () => {
     expect(result.originalCurrency).toBe("USD");
   });
 
+  it("keeps thousands separators when parsing receipt totals", () => {
+    const result = parseReceiptText("HOTEL CHICAGO\n05/20/2026\nTotal $1,234.56");
+
+    expect(result.originalAmount).toBe(1234.56);
+  });
+
   it("creates a review expense from extracted receipt text", () => {
     const expense = createExpenseFromExtractedText("exp-imported", "Taxi Parisien\n05/21/2026\nTotal EUR 42.00");
 

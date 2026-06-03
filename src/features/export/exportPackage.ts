@@ -44,6 +44,10 @@ function readinessMessage(expense: Expense, message: string) {
   return `${expenseTitle(expense)} (${expense.expenseDate}): ${message}`;
 }
 
+function needsFinalUsd(expense: Expense) {
+  return expense.originalCurrency !== "USD" && (!Number.isFinite(expense.finalUsdAmount) || Number(expense.finalUsdAmount) <= 0);
+}
+
 export function buildReadinessChecklist(report: Report, expenses: Expense[]): ReadinessItem[] {
   const reportExpenses = expenses.filter((expense) => report.expenseIds.includes(expense.id));
   const items: ReadinessItem[] = [];
@@ -67,7 +71,7 @@ export function buildReadinessChecklist(report: Report, expenses: Expense[]): Re
       items.push({ kind: "declaration", expenseId: expense.id, message: readinessMessage(expense, "Missing receipt declaration is required.") });
     }
 
-    if (expense.status === "FX" && !expense.finalUsdAmount) {
+    if ((expense.status === "FX" || needsFinalUsd(expense)) && !items.some((item) => item.kind === "fx" && item.expenseId === expense.id)) {
       items.push({ kind: "fx", expenseId: expense.id, message: readinessMessage(expense, "Confirm final USD amount and FX details.") });
     }
 

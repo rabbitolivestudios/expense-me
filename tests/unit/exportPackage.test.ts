@@ -34,6 +34,17 @@ describe("Export Package readiness", () => {
     expect(checklist.some((item) => item.message === "city is required.")).toBe(false);
   });
 
+  it("blocks non-USD expenses without a final USD amount", () => {
+    const nonUsdExpense = { ...seedExpenses[1], finalUsdAmount: undefined, status: "Ready" as const };
+    const checklist = buildReadinessChecklist({ ...seedReports[1], expenseIds: [nonUsdExpense.id] }, [nonUsdExpense]);
+
+    expect(checklist).toContainEqual({
+      kind: "fx",
+      expenseId: nonUsdExpense.id,
+      message: "Taxi Parisien (2026-05-21): Confirm final USD amount and FX details."
+    });
+  });
+
   it("builds handoff files with corporate fields and declaration text", () => {
     const expenses = seedExpenses.map((expense) =>
       expense.id === "exp-fuel-training" ? { ...expense, declarationId: "decl-exp-fuel-training", status: "Ready" as const } : expense

@@ -31,6 +31,7 @@ type DetailFieldKey =
   | "paymentMethod"
   | "originalAmount"
   | "originalCurrency"
+  | "finalUsdAmount"
   | "description"
   | "mealPeopleCount";
 
@@ -59,6 +60,12 @@ function getValidationErrors(expense: Expense): DetailFieldErrors {
   }
   if (!/^[A-Z]{3}$/.test(expense.originalCurrency)) {
     errors.originalCurrency = "Use a 3-letter currency code.";
+  }
+  if (
+    expense.originalCurrency !== "USD" &&
+    (!Number.isFinite(expense.finalUsdAmount) || Number(expense.finalUsdAmount) <= 0)
+  ) {
+    errors.finalUsdAmount = "Confirm final USD amount.";
   }
   if (!expense.description.trim()) errors.description = "Enter an expense description.";
   if (isMealExpenseType(expense.expenseType) && (!expense.mealPeopleCount || expense.mealPeopleCount <= 0)) {
@@ -360,15 +367,18 @@ export function ExpenseDetailScreen({ expense, onBack, onCreateDeclaration, onCr
           />
           <FieldError field="originalCurrency" />
         </label>
-        <label className="detail-field">
-          <FieldLabel required={false}>Final USD</FieldLabel>
+        <label className={fieldClass("finalUsdAmount")}>
+          <FieldLabel required={draft.originalCurrency !== "USD"}>Final USD</FieldLabel>
           <input
             aria-label="Final USD"
             inputMode="decimal"
             type="number"
             value={draft.finalUsdAmount ?? ""}
             onChange={(event) => update("finalUsdAmount", event.target.value ? updateNumber(event.target.value) : undefined)}
+            aria-invalid={Boolean(errorFor("finalUsdAmount"))}
+            aria-describedby={describedBy("finalUsdAmount")}
           />
+          <FieldError field="finalUsdAmount" />
         </label>
         {isMealExpenseType(draft.expenseType) && (
           <label className={fieldClass("mealPeopleCount")}>
