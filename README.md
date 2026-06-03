@@ -72,13 +72,17 @@ The production app is deployed on Vercel at `expense-me-tbo.vercel.app`. AgentMa
 
 V1 remains live on Vercel at `expense-me-tbo.vercel.app` as the fallback production app. V1.5 runs separately at `expense.mac-tbo.com` behind Cloudflare Access, with shared app data stored in Cloudflare D1 and binary artifacts stored in Cloudflare R2.
 
-Required Wrangler commands:
+Required Wrangler setup commands:
 
 ```bash
-npm run cf:build
-npm run cf:dev
-npm run cf:d1:migrations
-npm run cf:deploy
+npx wrangler login
+npx wrangler d1 create expense-me-v15
+npx wrangler r2 bucket create expense-me-v15-artifacts
+npx wrangler secret put ACCESS_TEAM_DOMAIN
+npx wrangler secret put ACCESS_AUD
+npx wrangler secret put ACCESS_ALLOWED_EMAIL
+npx wrangler secret put AGENTMAIL_API_KEY
+npx wrangler secret put AGENTMAIL_INBOX_ID
 ```
 
 Do not commit secret values, Cloudflare Access JWT audience values, AgentMail credentials, `.env` files, or local Wrangler state.
