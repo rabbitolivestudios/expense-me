@@ -27,6 +27,10 @@ function isAllowedEmail(email: string, env: CloudflareEnv) {
   return !env.ACCESS_ALLOWED_EMAIL || email.toLowerCase() === env.ACCESS_ALLOWED_EMAIL.toLowerCase();
 }
 
+function isExplicitlyAllowedEmail(email: string, env: CloudflareEnv) {
+  return Boolean(env.ACCESS_ALLOWED_EMAIL) && isAllowedEmail(email, env);
+}
+
 function remoteJwksForIssuer(issuer: string) {
   const existing = remoteJwksByIssuer.get(issuer);
   if (existing) {
@@ -60,7 +64,7 @@ export async function requireAccessUser(
 ): Promise<AccessUser> {
   if (env.ENVIRONMENT === "local") {
     const localEmail = request.headers.get("x-expense-me-local-user")?.trim();
-    if (localEmail && isLoopbackHostname(new URL(request.url).hostname) && isAllowedEmail(localEmail, env)) {
+    if (localEmail && isLoopbackHostname(new URL(request.url).hostname) && isExplicitlyAllowedEmail(localEmail, env)) {
       return { id: `local:${localEmail}`, email: localEmail };
     }
   }

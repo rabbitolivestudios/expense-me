@@ -91,6 +91,16 @@ describe("Cloudflare Access auth", () => {
     });
   });
 
+  it("does not allow local test identity when ACCESS_ALLOWED_EMAIL is unset", async () => {
+    const request = new Request("http://localhost/api/bootstrap", {
+      headers: { "x-expense-me-local-user": "thiago@example.com" }
+    });
+
+    await expect(requireAccessUser(request, { ENVIRONMENT: "local" } as CloudflareEnv)).rejects.toMatchObject({
+      status: 401
+    });
+  });
+
   it("maps verifier rejection to unauthorized", async () => {
     const request = new Request("https://expense.mac-tbo.com/api/bootstrap", {
       headers: { "CF-Access-Jwt-Assertion": "jwt" }
