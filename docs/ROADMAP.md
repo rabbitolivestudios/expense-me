@@ -22,7 +22,7 @@ Build a mobile-first expense companion that captures work expenses, catches miss
 - Card statement import and reconciliation.
 - Multiple currency fields, final USD amount, FX rate, and foreign transaction fee capture.
 - Missing receipt declaration support.
-- Export Package generation with spreadsheet, review notes, receipt copies, and declarations.
+- Export Package generation with an entry spreadsheet plus PDF expense index, PDF receipt copies, PDF reconciliation notes, and PDF declarations.
 - Expense deletion from Inbox swipe-left and Expense Detail.
 - Browser-local OCR for camera/image receipts.
 - PDF embedded-text extraction with scanned-PDF OCR fallback.

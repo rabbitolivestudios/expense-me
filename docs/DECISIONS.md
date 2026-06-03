@@ -21,7 +21,11 @@ V1 should:
 - reconcile card statements to find missed charges;
 - mirror company-required fields and dropdowns;
 - require missing-receipt declarations when evidence is absent;
-- generate an Export Package with transaction details and receipt/declaration evidence.
+- generate an Export Package with transaction details and PDF receipt/declaration evidence.
+
+## Export Package Evidence Format
+
+Company expense-system attachments should be PDFs. Export Packages may keep `entry-spreadsheet.csv` for data entry, but every supporting artifact produced by the package should be a PDF: email receipt bodies, captured/scanned receipt images, uploaded text receipts, missing-receipt declarations, receipt-folder notes, reconciliation notes, and the readable expense index.
 
 ## Expense Folder Requirement
 

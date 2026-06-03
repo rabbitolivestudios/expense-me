@@ -14,7 +14,7 @@ Expense Me is designed around three layers:
 
 - **Expense**: one receipt, card charge, or manual item.
 - **Expense Folder**: the required business grouping for related expenses, such as a trip, training, customer visit, or monthly batch.
-- **Export Package**: the generated handoff file for one Expense Folder, including the entry spreadsheet, review notes, receipt copies, and missing-receipt declarations.
+- **Export Package**: the generated handoff file for one Expense Folder, including the entry spreadsheet plus PDF expense index, PDF receipt copies, PDF reconciliation notes, and PDF missing-receipt declarations.
 
 The current app has the first V1 implementation of expenses, card reconciliation, Expense Folders, browser-local receipt OCR/PDF extraction, and export packages.
 
@@ -28,7 +28,7 @@ The current app has the first V1 implementation of expenses, card reconciliation
 - Meal attendee count support
 - Card statement import and matching
 - Swipe-left and detail-screen expense deletion with confirmation
-- Export package generation with receipts/declarations and review files
+- Export package generation with all supporting evidence in PDF form for attachment to the company expense system
 
 ## Documentation
 
