@@ -1,0 +1,360 @@
+.screen-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.screen-header {
+  min-height: 58px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 16px;
+}
+
+.screen-header > div {
+  min-width: 0;
+  flex: 1;
+}
+
+.screen-header h1 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.95rem;
+  line-height: 1.05;
+  letter-spacing: 0;
+  font-weight: 850;
+}
+
+.eyebrow {
+  margin: 0 0 6px;
+  color: var(--brand-violet);
+  font-size: 0.73rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.brand-lockup {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  margin-bottom: 8px;
+}
+
+.brand-lockup img {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  flex: 0 0 auto;
+  box-shadow: 0 5px 12px rgba(70, 10, 120, 0.16);
+}
+
+.brand-name {
+  color: var(--brand-violet);
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 850;
+  line-height: 1;
+}
+
+.icon-button {
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+  background: var(--surface-soft);
+  color: var(--brand-hot-orange);
+  display: grid;
+  place-items: center;
+}
+
+.back-button {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+  border-radius: 8px;
+  background: var(--surface-soft);
+  color: var(--brand-purple);
+  display: grid;
+  place-items: center;
+}
+
+.back-button svg {
+  width: 21px;
+  height: 21px;
+}
+
+.icon-button svg {
+  width: 20px;
+  height: 20px;
+}
+
+.sync-strip {
+  min-height: 42px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--brand-steel);
+  color: var(--brand-white);
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.8rem;
+}
+
+.sync-strip span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sync-strip strong {
+  color: var(--brand-yellow);
+  font-size: 0.76rem;
+}
+
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.metric-panel {
+  min-height: 92px;
+  padding: 14px;
+  border-radius: 8px;
+  background: var(--surface-muted);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.metric-panel.accent {
+  background: var(--success-bg);
+}
+
+.metric-panel span {
+  font-size: 2rem;
+  font-weight: 850;
+  line-height: 1;
+}
+
+.metric-panel p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.quick-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.quick-row.two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.quick-row button {
+  min-height: 58px;
+  border-radius: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.quick-row svg {
+  width: 22px;
+  height: 22px;
+  color: var(--brand-sky-blue);
+}
+
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.section-head h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.section-head span {
+  min-width: 28px;
+  min-height: 28px;
+  border-radius: 8px;
+  background: var(--brand-purple);
+  color: var(--brand-white);
+  display: grid;
+  place-items: center;
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.statement-status {
+  margin: -8px 0 0;
+  color: var(--brand-sky-blue);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.expense-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.expense-card,
+.report-panel {
+  min-height: 88px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  box-shadow: var(--shadow-card);
+}
+
+.expense-main {
+  min-width: 0;
+}
+
+.expense-main h3,
+.report-panel h2 {
+  margin: 7px 0 3px;
+  font-size: 0.98rem;
+  line-height: 1.18;
+}
+
+.expense-main p,
+.report-panel p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+.expense-amount {
+  min-width: 92px;
+  text-align: right;
+}
+
+.expense-amount strong {
+  display: block;
+  font-size: 0.95rem;
+}
+
+.expense-amount span {
+  color: var(--text-muted);
+  font-size: 0.74rem;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 8px;
+  border-radius: 8px;
+  font-size: 0.68rem;
+  font-weight: 850;
+}
+
+.status-pill.ready {
+  background: var(--success-bg);
+  color: var(--brand-sky-blue);
+}
+
+.status-pill.review {
+  background: rgba(190, 40, 120, 0.11);
+  color: var(--brand-violet);
+}
+
+.status-pill.match {
+  background: rgba(70, 10, 120, 0.11);
+  color: var(--brand-purple);
+}
+
+.status-pill.fx {
+  background: var(--warning-bg);
+  color: #7a4a00;
+}
+
+.status-pill.declare,
+.status-pill.duplicate,
+.status-pill.context {
+  background: var(--danger-bg);
+  color: var(--brand-hot-orange);
+}
+
+.camera-panel {
+  min-height: 280px;
+  border-radius: 8px;
+  background: var(--brand-gradient);
+  color: var(--brand-white);
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 16px;
+  box-shadow: 0 20px 34px rgba(70, 10, 120, 0.18);
+}
+
+.camera-panel svg {
+  width: 68px;
+  height: 68px;
+}
+
+.camera-panel span {
+  font-size: 1.25rem;
+  font-weight: 850;
+}
+
+.report-panel {
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+}
+
+.report-panel > svg {
+  width: 32px;
+  height: 32px;
+  color: var(--brand-sky-blue);
+}
+
+.report-panel strong {
+  color: var(--brand-purple);
+  font-size: 0.82rem;
+}
+
+.export-checklist {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.export-checklist p {
+  min-height: 54px;
+  margin: 0;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 800;
+}
+
+.export-checklist svg {
+  width: 22px;
+  height: 22px;
+  color: var(--brand-sky-blue);
+}

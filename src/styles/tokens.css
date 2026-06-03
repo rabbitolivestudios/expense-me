@@ -1,0 +1,55 @@
+:root {
+  --brand-purple: #460a78;
+  --brand-violet: #be2878;
+  --brand-red: #e63c41;
+  --brand-orange: #f58746;
+  --brand-yellow: #ffbe6e;
+  --brand-steel: #414141;
+  --brand-hot-orange: #ff3700;
+  --brand-sky-blue: #0072ce;
+  --brand-white: #ffffff;
+  --surface: #ffffff;
+  --surface-muted: #f6f7f9;
+  --surface-soft: #fff6ef;
+  --border: #e3e5e8;
+  --text: #414141;
+  --text-muted: #717171;
+  --success-bg: rgba(0, 114, 206, 0.1);
+  --warning-bg: rgba(255, 190, 110, 0.32);
+  --danger-bg: rgba(255, 55, 0, 0.12);
+  --brand-gradient: linear-gradient(135deg, #460a78 0%, #be2878 32%, #e63c41 58%, #f58746 82%, #ffbe6e 100%);
+  --font-ui: Gilroy, Aptos, "Segoe UI", Arial, sans-serif;
+  --font-display: Gilroy, "Aptos Display", "Segoe UI Variable Display", "Segoe UI", Arial, sans-serif;
+  --radius-card: 8px;
+  --radius-control: 10px;
+  --shadow-card: 0 8px 22px rgba(65, 65, 65, 0.08);
+  --bottom-nav-height: 78px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--surface-muted);
+  color: var(--text);
+  font-family: var(--font-ui);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  border: 0;
+}

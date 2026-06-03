@@ -1,0 +1,132 @@
+.inbox-screen .quick-row {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.action-card {
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+}
+
+.swipe-row {
+  position: relative;
+  overflow: hidden;
+  border-radius: 8px;
+  touch-action: pan-y;
+}
+
+.swipe-row .action-card {
+  position: relative;
+  z-index: 1;
+  transition: transform 160ms ease;
+}
+
+.swipe-row.is-revealed .action-card {
+  transform: translateX(-78px);
+}
+
+.swipe-actions {
+  position: absolute;
+  inset: 0 0 0 auto;
+  width: 78px;
+  display: flex;
+  align-items: stretch;
+  justify-content: flex-end;
+}
+
+.swipe-delete {
+  width: 70px;
+  border-radius: 8px;
+  background: var(--brand-hot-orange);
+  color: var(--brand-white);
+  display: grid;
+  place-items: center;
+  opacity: 0;
+  transform: translateX(10px);
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease;
+}
+
+.swipe-row.is-revealed .swipe-delete {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.swipe-delete svg {
+  width: 22px;
+  height: 22px;
+}
+
+.delete-confirmation {
+  position: relative;
+  z-index: 2;
+  margin-top: 8px;
+  padding: 10px;
+  border: 1px solid rgba(255, 55, 0, 0.2);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+}
+
+.delete-confirmation strong {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--brand-hot-orange);
+  font-size: 0.86rem;
+  font-weight: 900;
+}
+
+.delete-confirmation div {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.delete-confirmation button {
+  min-height: 42px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-soft);
+  color: var(--text);
+  font-weight: 850;
+}
+
+.delete-confirmation .confirm-delete {
+  border-color: var(--brand-hot-orange);
+  background: var(--brand-hot-orange);
+  color: var(--brand-white);
+}
+
+.action-card .expense-main {
+  display: block;
+}
+
+.action-card .expense-main strong,
+.action-card .expense-main small,
+.action-card .expense-amount small {
+  display: block;
+}
+
+.action-card .expense-main strong {
+  margin: 7px 0 3px;
+  font-size: 0.98rem;
+  line-height: 1.18;
+}
+
+.action-card .expense-main small,
+.action-card .expense-amount small {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+.section-head.compact {
+  margin-top: 4px;
+}
+
+.inline-status {
+  margin: -8px 0 0;
+  color: var(--brand-sky-blue);
+  font-size: 0.8rem;
+  font-weight: 800;
+}

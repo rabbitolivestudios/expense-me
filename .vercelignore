@@ -1,0 +1,8 @@
+docs
+outputs
+tests
+tools
+work
+node_modules
+dist
+*.tsbuildinfo

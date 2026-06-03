@@ -1,0 +1,51 @@
+.export-state {
+  min-height: 92px;
+  padding: 14px;
+  border-radius: 8px;
+  background: var(--brand-gradient);
+  color: var(--brand-white);
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+
+.export-state svg {
+  width: 34px;
+  height: 34px;
+}
+
+.export-state h2,
+.export-state p {
+  margin: 0;
+}
+
+.export-state h2 {
+  font-size: 1.02rem;
+}
+
+.export-state p {
+  margin-top: 3px;
+  opacity: 0.86;
+  font-size: 0.82rem;
+}
+
+.primary-action {
+  min-height: 50px;
+  border-radius: 8px;
+  background: var(--brand-hot-orange);
+  color: var(--brand-white);
+  font-weight: 850;
+}
+
+.primary-action:disabled {
+  background: var(--border);
+  color: var(--text-muted);
+}
+
+.export-status {
+  margin: -4px 0 0;
+  color: var(--brand-sky-blue);
+  font-size: 0.82rem;
+  font-weight: 800;
+}

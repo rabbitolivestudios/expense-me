@@ -1,0 +1,49 @@
+.capture-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.capture-grid button,
+.capture-grid label {
+  min-height: 92px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 0.88rem;
+  font-weight: 850;
+  line-height: 1.12;
+  box-shadow: var(--shadow-card);
+}
+
+.capture-grid svg {
+  width: 24px;
+  height: 24px;
+  color: var(--brand-sky-blue);
+}
+
+.capture-status {
+  margin: -4px 0 0;
+  color: var(--brand-sky-blue);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

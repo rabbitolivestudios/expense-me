@@ -1,0 +1,15 @@
+.env
+.env.local
+.env.*.local
+
+.vercel/
+.superpowers/
+
+node_modules/
+dist/
+work/
+outputs/
+
+*.tsbuildinfo
+npm-debug.log*
+vite.config.d.ts
