@@ -1,6 +1,6 @@
 import type { Expense, ExportPackage, ReceiptArtifact, Report, StatementCharge } from "../domain/types";
 import { normalizeCloudSnapshot } from "./appSnapshot";
-import { encodePayload, stripArtifactDataUrl } from "./schema";
+import { decodePayload, encodePayload, stripArtifactDataUrl } from "./schema";
 import type { AccessUser, CloudSnapshot, CloudflareEnv, WorkspaceContext } from "./types";
 
 type PayloadEntity = Expense | Report | ReceiptArtifact | StatementCharge | ExportPackage;
@@ -77,7 +77,7 @@ export class D1ExpenseMeRepository {
       .bind(workspaceId)
       .all<{ payload_json: string }>();
 
-    return (result.results ?? []).map((row) => JSON.parse(row.payload_json) as T);
+    return (result.results ?? []).map((row) => decodePayload<T>(row.payload_json));
   }
 
   async upsertExpense(context: WorkspaceContext, expense: Expense): Promise<MutationResult> {
@@ -128,7 +128,7 @@ export class D1ExpenseMeRepository {
     return { snapshot: await this.getSnapshot(context) };
   }
 
-  async upsertReceiptArtifact(context: WorkspaceContext, artifact: ReceiptArtifact): Promise<MutationResult> {
+  async upsertReceiptArtifact(context: WorkspaceContext, artifact: ReceiptArtifact) {
     const now = new Date().toISOString();
     const metadata = stripArtifactDataUrl(artifact);
     await this.env.EXPENSE_ME_DB.prepare(
@@ -146,10 +146,9 @@ export class D1ExpenseMeRepository {
       )
       .run();
 
-    return { snapshot: await this.getSnapshot(context) };
   }
 
-  async upsertStatementCharge(context: WorkspaceContext, charge: StatementCharge): Promise<MutationResult> {
+  async upsertStatementCharge(context: WorkspaceContext, charge: StatementCharge) {
     const now = new Date().toISOString();
     await this.env.EXPENSE_ME_DB.prepare(
       "INSERT INTO statement_charges (id, workspace_id, payload_json, statement_import_id, match_status, transaction_date, created_at, updated_at, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1) ON CONFLICT(id) DO UPDATE SET payload_json = excluded.payload_json, match_status = excluded.match_status, updated_at = excluded.updated_at, version = statement_charges.version + 1"
@@ -166,6 +165,5 @@ export class D1ExpenseMeRepository {
       )
       .run();
 
-    return { snapshot: await this.getSnapshot(context) };
   }
 }

@@ -108,6 +108,119 @@ describe("D1 Expense Me repository", () => {
 
     expect(JSON.parse(payloadJson)).toEqual(expect.objectContaining({ id: artifact.id, storageKey: artifact.storageKey }));
     expect(JSON.parse(payloadJson)).not.toHaveProperty("dataUrl");
+    expect(db.prepare).toHaveBeenCalledTimes(1);
+  });
+
+  it("upserts expenses and returns a refreshed snapshot", async () => {
+    let payloadJson = "";
+    const db = createDb((sql) => {
+      if (sql.includes("INSERT INTO expenses")) {
+        return statement({
+          onBind: (_id, _workspaceId, _reportId, payload) => {
+            payloadJson = String(payload);
+          }
+        });
+      }
+      if (sql.includes("FROM expenses")) return statement({ all: [encodedRow(seedExpenses[0])] });
+      if (sql.includes("FROM expense_folders")) return statement({ all: [encodedRow(seedReports[0])] });
+      return statement();
+    });
+    const repo = new D1ExpenseMeRepository({ EXPENSE_ME_DB: db } as unknown as CloudflareEnv);
+
+    const result = await repo.upsertExpense(context(), seedExpenses[0]);
+
+    expect(JSON.parse(payloadJson)).toMatchObject({ id: seedExpenses[0].id, sourceType: seedExpenses[0].sourceType });
+    expect(result.snapshot.expenses).toHaveLength(1);
+    expect(result.snapshot.expenses[0].id).toBe(seedExpenses[0].id);
+    expect(db.prepare).toHaveBeenCalledWith(expect.stringContaining("INSERT INTO expenses"));
+  });
+
+  it("deletes expenses inside the workspace and returns a refreshed snapshot", async () => {
+    let deleteBindValues: unknown[] = [];
+    const db = createDb((sql) => {
+      if (sql.includes("DELETE FROM expenses")) {
+        return statement({
+          onBind: (...values) => {
+            deleteBindValues = values;
+          }
+        });
+      }
+      return statement();
+    });
+    const repo = new D1ExpenseMeRepository({ EXPENSE_ME_DB: db } as unknown as CloudflareEnv);
+
+    const result = await repo.deleteExpense(context(), "expense-1");
+
+    expect(deleteBindValues).toEqual(["workspace-personal", "expense-1"]);
+    expect(result.snapshot.workspaceId).toBe("workspace-personal");
+    expect(db.prepare).toHaveBeenCalledWith(expect.stringContaining("DELETE FROM expenses"));
+  });
+
+  it("upserts expense folders and returns a refreshed snapshot", async () => {
+    let payloadJson = "";
+    const db = createDb((sql) => {
+      if (sql.includes("INSERT INTO expense_folders")) {
+        return statement({
+          onBind: (_id, _workspaceId, payload) => {
+            payloadJson = String(payload);
+          }
+        });
+      }
+      if (sql.includes("FROM expense_folders")) return statement({ all: [encodedRow(seedReports[0])] });
+      return statement();
+    });
+    const repo = new D1ExpenseMeRepository({ EXPENSE_ME_DB: db } as unknown as CloudflareEnv);
+
+    const result = await repo.upsertExpenseFolder(context(), seedReports[0]);
+
+    expect(JSON.parse(payloadJson)).toMatchObject({ id: seedReports[0].id, name: seedReports[0].name });
+    expect(result.snapshot.reports.some((report) => report.id === seedReports[0].id)).toBe(true);
+    expect(db.prepare).toHaveBeenCalledWith(expect.stringContaining("INSERT INTO expense_folders"));
+  });
+
+  it("deletes expense folders inside the workspace and returns a refreshed snapshot", async () => {
+    let deleteBindValues: unknown[] = [];
+    const db = createDb((sql) => {
+      if (sql.includes("DELETE FROM expense_folders")) {
+        return statement({
+          onBind: (...values) => {
+            deleteBindValues = values;
+          }
+        });
+      }
+      return statement();
+    });
+    const repo = new D1ExpenseMeRepository({ EXPENSE_ME_DB: db } as unknown as CloudflareEnv);
+
+    const result = await repo.deleteExpenseFolder(context(), "report-1");
+
+    expect(deleteBindValues).toEqual(["workspace-personal", "report-1"]);
+    expect(result.snapshot.workspaceId).toBe("workspace-personal");
+    expect(db.prepare).toHaveBeenCalledWith(expect.stringContaining("DELETE FROM expense_folders"));
+  });
+
+  it("upserts statement charges without refreshing the snapshot", async () => {
+    let payloadJson = "";
+    const db = createDb((sql) => {
+      if (sql.includes("INSERT INTO statement_charges")) {
+        return statement({
+          onBind: (_id, _workspaceId, payload) => {
+            payloadJson = String(payload);
+          }
+        });
+      }
+      return statement();
+    });
+    const repo = new D1ExpenseMeRepository({ EXPENSE_ME_DB: db } as unknown as CloudflareEnv);
+
+    await expect(repo.upsertStatementCharge(context(), seedStatementCharges[0])).resolves.toBeUndefined();
+
+    expect(JSON.parse(payloadJson)).toMatchObject({
+      id: seedStatementCharges[0].id,
+      matchStatus: seedStatementCharges[0].matchStatus
+    });
+    expect(db.prepare).toHaveBeenCalledTimes(1);
+    expect(db.prepare).toHaveBeenCalledWith(expect.stringContaining("INSERT INTO statement_charges"));
   });
 });
 
