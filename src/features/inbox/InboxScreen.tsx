@@ -560,7 +560,7 @@ export function InboxScreen({
 
       <div className="expense-list">
         {shown.length === 0 && (
-          <article className="expense-card">
+          <article className="expense-card empty-state-card">
             <span className="expense-main">
               <span className="status-pill ready">Ready</span>
               <strong>All clear here</strong>
