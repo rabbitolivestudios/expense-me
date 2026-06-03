@@ -19,8 +19,11 @@ describe("InboxScreen", () => {
         onRenameExpense={() => undefined}
         onDeleteExpense={() => undefined}
         onOpenCards={() => undefined}
+        onOpenExport={() => undefined}
         onOpenExpense={() => undefined}
         onSyncEmail={() => Promise.resolve(0)}
+        theme="light"
+        onToggleTheme={() => undefined}
       />
     );
 
@@ -28,7 +31,7 @@ describe("InboxScreen", () => {
     expect(screen.getByRole("button", { name: "Upload PDF" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Open email intake" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Upload statement" })).toBeInTheDocument();
-    expect(screen.getByText("Needs attention")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /To review/i })).toBeInTheDocument();
     expect(screen.getByText("Avec River North")).toBeInTheDocument();
   });
 
@@ -46,8 +49,11 @@ describe("InboxScreen", () => {
         onRenameExpense={() => undefined}
         onDeleteExpense={() => undefined}
         onOpenCards={() => undefined}
+        onOpenExport={() => undefined}
         onOpenExpense={openExpense}
         onSyncEmail={() => Promise.resolve(0)}
+        theme="light"
+        onToggleTheme={() => undefined}
       />
     );
 

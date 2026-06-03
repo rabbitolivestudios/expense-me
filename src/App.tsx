@@ -11,6 +11,7 @@ import { ReportsScreen } from "./features/reports/ReportsScreen";
 import { CardsScreen } from "./features/statements/CardsScreen";
 import { reconcileStatementCharges } from "./features/statements/reconciliation";
 import { AppShell } from "./features/shell/AppShell";
+import { useTheme } from "./features/shell/useTheme";
 import type { ScreenName } from "./features/shell/BottomNav";
 import "./styles/app.css";
 
@@ -151,6 +152,7 @@ export default function App() {
   const [statementCharges, setStatementCharges] = useState<StatementCharge[]>(() => persistedState?.statementCharges ?? []);
   const [selectedExpenseId, setSelectedExpenseId] = useState<string | null>(null);
   const selectedExpense = expenses.find((expense) => expense.id === selectedExpenseId);
+  const { theme, toggleTheme } = useTheme();
 
   useEffect(() => {
     persistState({ expenses, receiptArtifacts, reports, statementCharges });
@@ -392,6 +394,9 @@ export default function App() {
           onAssignExpenseFolder={assignExpenseFolder}
           onCreateExpenseFolder={createExpenseFolder}
           onRenameExpense={renameExpense}
+          onOpenExport={() => changeScreen("Export")}
+          theme={theme}
+          onToggleTheme={toggleTheme}
           onOpenCards={() => changeScreen("Cards")}
           onOpenExpense={setSelectedExpenseId}
           onDeleteExpense={deleteExpense}

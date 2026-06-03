@@ -1,13 +1,16 @@
+/* export.css — Spectrum (class names unchanged). */
+
 .export-state {
-  min-height: 92px;
-  padding: 14px;
-  border-radius: 8px;
+  min-height: 96px;
+  padding: 18px;
+  border-radius: var(--radius-card);
   background: var(--brand-gradient);
   color: var(--brand-white);
   display: grid;
-  grid-template-columns: 42px minmax(0, 1fr);
+  grid-template-columns: 46px minmax(0, 1fr);
   align-items: center;
-  gap: 12px;
+  gap: 14px;
+  box-shadow: 0 14px 34px -16px rgba(70, 10, 120, 0.5);
 }
 
 .export-state svg {
@@ -21,52 +24,71 @@
 }
 
 .export-state h2 {
-  font-size: 1.02rem;
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  font-weight: 800;
 }
 
 .export-state p {
   margin-top: 3px;
-  opacity: 0.86;
+  opacity: 0.9;
   font-size: 0.82rem;
+  font-weight: 600;
 }
 
 .export-folder-select {
   display: grid;
-  gap: 6px;
+  gap: 7px;
 }
 
 .export-folder-select span {
   color: var(--text-muted);
-  font-size: 0.76rem;
-  font-weight: 850;
+  font-size: 0.78rem;
+  font-weight: 700;
 }
 
 .export-folder-select select {
-  min-height: 46px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  min-height: 50px;
+  border: 1.5px solid var(--border-strong);
+  border-radius: var(--radius-control);
   background: var(--surface);
   color: var(--text);
-  padding: 10px 12px;
-  font-weight: 800;
+  padding: 12px 14px;
+  font-weight: 700;
+  -webkit-appearance: none;
+  appearance: none;
 }
 
-.primary-action {
-  min-height: 50px;
-  border-radius: 8px;
-  background: var(--brand-hot-orange);
+.export-folder-select select:focus {
+  outline: 0;
+  border-color: var(--st-review);
+}
+
+/* Export's own primary action keeps the gradient treatment from app/detail */
+.export-checklist + .primary-action,
+.export-state ~ .primary-action,
+.screen-stack .primary-action {
+  min-height: 54px;
+  border-radius: var(--radius-control);
+  background: var(--brand-gradient);
   color: var(--brand-white);
-  font-weight: 850;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  box-shadow: 0 12px 26px -10px rgba(230, 60, 65, 0.55);
 }
 
 .primary-action:disabled {
   background: var(--border);
   color: var(--text-muted);
+  box-shadow: none;
 }
 
 .export-status {
   margin: -4px 0 0;
-  color: var(--brand-sky-blue);
+  color: var(--st-ready);
   font-size: 0.82rem;
-  font-weight: 800;
+  font-weight: 700;
 }

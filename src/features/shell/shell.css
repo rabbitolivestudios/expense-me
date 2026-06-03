@@ -1,53 +1,71 @@
+/* Shell — Spectrum: edge-to-edge frame + frosted glass bottom nav. */
+
 .app-frame {
   min-height: 100dvh;
   max-width: 440px;
   margin: 0 auto;
-  background: var(--surface);
+  background: var(--surface-muted);
   color: var(--text);
   display: flex;
   flex-direction: column;
   position: relative;
-  box-shadow: 0 0 0 1px rgba(65, 65, 65, 0.04);
 }
 
 .app-screen {
   flex: 1;
-  padding: max(18px, env(safe-area-inset-top)) 18px 180px;
+  /* hero art bleeds to the top edge; horizontal padding lives on children/heroes */
+  padding: 0 0 calc(var(--bottom-nav-height) + 64px);
 }
 
+/* fade the scroll area into the canvas behind the floating nav */
+.app-frame::after {
+  content: "";
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 0;
+  width: min(440px, 100vw);
+  height: 96px;
+  z-index: 15;
+  pointer-events: none;
+  background: linear-gradient(to top, var(--surface-muted) 32%, transparent);
+}
+
+/* ---------- frosted floating nav ---------- */
 .bottom-nav {
   position: fixed;
   left: 50%;
-  bottom: max(10px, env(safe-area-inset-bottom));
+  bottom: max(14px, env(safe-area-inset-bottom));
   transform: translateX(-50%);
   z-index: 20;
-  width: min(420px, calc(100vw - 20px));
+  width: min(412px, calc(100vw - 24px));
   min-height: var(--bottom-nav-height);
-  padding: 10px;
-  border: 1px solid var(--border);
-  border-radius: 22px;
-  background: rgba(255, 255, 255, 0.96);
+  padding: 8px;
+  border: 1px solid color-mix(in srgb, var(--text) 8%, transparent);
+  border-radius: 24px;
+  background: var(--nav-bg);
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
+  backdrop-filter: blur(22px) saturate(180%);
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  align-items: end;
-  box-shadow: 0 14px 30px rgba(65, 65, 65, 0.14);
-  backdrop-filter: blur(14px);
+  align-items: center;
+  box-shadow: var(--shadow-card);
 }
 
 .nav-action {
   min-width: 0;
-  min-height: 56px;
+  min-height: 54px;
   padding: 2px 0;
-  border-radius: 8px;
+  border-radius: 14px;
   background: transparent;
-  color: var(--text-muted);
+  color: var(--text-faint);
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: center;
   gap: 4px;
-  font-size: 0.72rem;
-  font-weight: 700;
+  font-size: 0.66rem;
+  font-weight: 800;
   line-height: 1;
 }
 
@@ -57,34 +75,38 @@
 }
 
 .nav-action.active {
-  color: var(--brand-purple);
+  color: var(--st-match);
 }
 
 .nav-icon {
   width: 32px;
-  height: 28px;
+  height: 26px;
   display: grid;
   place-items: center;
 }
 
 .capture-action {
-  color: var(--brand-hot-orange);
-  transform: translateY(-24px);
+  color: var(--brand-violet);
 }
 
 .capture-action .nav-label {
-  transform: translateY(2px);
+  transform: translateY(4px);
 }
 
 .capture-orb {
-  width: 58px;
-  height: 58px;
-  border-radius: 18px;
+  width: 60px;
+  height: 60px;
+  border-radius: 20px;
   display: grid;
   place-items: center;
   color: var(--brand-white);
-  background: var(--brand-hot-orange);
-  box-shadow: 0 12px 22px rgba(255, 55, 0, 0.32);
+  background: var(--brand-gradient);
+  box-shadow: 0 10px 22px -6px rgba(230, 60, 65, 0.6);
+  transform: translateY(-14px);
+}
+
+.capture-action:active .capture-orb {
+  transform: translateY(-14px) scale(0.93);
 }
 
 .capture-orb svg {

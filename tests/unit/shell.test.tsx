@@ -237,7 +237,7 @@ describe("mobile app shell", () => {
     await user.click(within(confirmation).getByRole("button", { name: "Confirm Delete" }));
 
     expect(screen.queryByRole("button", { name: /Avec River North/i })).not.toBeInTheDocument();
-    expect(screen.getByText("Needs attention")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /To review/i })).toBeInTheDocument();
   });
 
   it("renames an expense from the inbox long-press action sheet", async () => {

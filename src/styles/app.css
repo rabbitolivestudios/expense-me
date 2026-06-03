@@ -1,18 +1,48 @@
+/* ============================================================
+   app.css — Spectrum component layer.
+   Class names match the original markup exactly; styling is
+   retuned to the Spectrum visual language (gradient hero
+   headers, float cards, filled status chips, Geist-Mono money).
+   ============================================================ */
+
 .screen-stack {
   display: flex;
   flex-direction: column;
-  gap: 18px;
-}
-
-.screen-header {
-  min-height: 58px;
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
   gap: 16px;
 }
 
+/* ---------- Gradient hero header (full-bleed) ----------
+   The screen padding lives here so each screen's <header> can
+   bleed edge-to-edge under the status bar with the brand gradient. */
+.screen-header {
+  position: relative;
+  margin: 0 0 4px;
+  padding: max(54px, calc(env(safe-area-inset-top, 0px) + 16px)) 22px 26px;
+  background: var(--brand-gradient);
+  color: var(--brand-white);
+  border-radius: 0 0 var(--radius-hero) var(--radius-hero);
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  overflow: hidden;
+  box-shadow: 0 14px 34px -18px rgba(70, 10, 120, 0.5);
+}
+
+/* soft light bloom in the corner */
+.screen-header::after {
+  content: "";
+  position: absolute;
+  right: -42px;
+  top: -52px;
+  width: 180px;
+  height: 180px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.13);
+}
+
 .screen-header > div {
+  position: relative;
+  z-index: 1;
   min-width: 0;
   flex: 1;
 }
@@ -20,64 +50,65 @@
 .screen-header h1 {
   margin: 0;
   font-family: var(--font-display);
-  font-size: 1.95rem;
-  line-height: 1.05;
-  letter-spacing: 0;
-  font-weight: 850;
+  font-size: 2rem;
+  line-height: 1;
+  letter-spacing: -0.01em;
+  font-weight: 800;
 }
 
 .eyebrow {
   margin: 0 0 6px;
-  color: var(--brand-violet);
-  font-size: 0.73rem;
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 0.72rem;
   font-weight: 800;
-  letter-spacing: 0;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
 .brand-lockup {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  min-height: 32px;
-  margin-bottom: 8px;
+  gap: 9px;
+  min-height: 30px;
+  margin-bottom: 10px;
 }
 
 .brand-lockup img {
-  width: 28px;
-  height: 28px;
-  border-radius: 7px;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
   flex: 0 0 auto;
-  box-shadow: 0 5px 12px rgba(70, 10, 120, 0.16);
+  box-shadow: 0 5px 14px rgba(0, 0, 0, 0.22);
 }
 
 .brand-name {
-  color: var(--brand-violet);
+  color: var(--brand-white);
   font-family: var(--font-display);
-  font-size: 1rem;
-  font-weight: 850;
+  font-size: 1.02rem;
+  font-weight: 800;
   line-height: 1;
 }
 
-.icon-button {
-  width: 42px;
-  height: 42px;
-  border-radius: 8px;
-  background: var(--surface-soft);
-  color: var(--brand-hot-orange);
+/* header buttons become glass on the gradient */
+.icon-button,
+.back-button {
+  position: relative;
+  z-index: 1;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.18);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  color: var(--brand-white);
   display: grid;
   place-items: center;
 }
 
-.back-button {
-  width: 42px;
-  height: 42px;
-  flex: 0 0 auto;
-  border-radius: 8px;
-  background: var(--surface-soft);
-  color: var(--brand-purple);
-  display: grid;
-  place-items: center;
+.icon-button:active,
+.back-button:active {
+  transform: scale(0.92);
 }
 
 .back-button svg {
@@ -90,41 +121,60 @@
   height: 20px;
 }
 
+/* the rest of the screen content gets the horizontal padding back */
+.screen-stack > *:not(.screen-header) {
+  margin-left: 18px;
+  margin-right: 18px;
+}
+
+/* ---------- sync strip ---------- */
 .sync-strip {
-  min-height: 42px;
-  padding: 10px 12px;
-  border-radius: 8px;
-  background: var(--brand-steel);
-  color: var(--brand-white);
+  min-height: 46px;
+  padding: 11px 14px;
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
   display: grid;
   grid-template-columns: 22px minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
   font-size: 0.8rem;
+  font-weight: 600;
+  box-shadow: var(--shadow-card);
+}
+
+.sync-strip svg {
+  color: var(--st-ready);
 }
 
 .sync-strip span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-family: var(--font-mono);
 }
 
 .sync-strip strong {
-  color: var(--brand-yellow);
-  font-size: 0.76rem;
+  color: var(--st-ready);
+  font-size: 0.74rem;
+  font-weight: 800;
 }
 
+/* ---------- metric panels ---------- */
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  gap: 12px;
 }
 
 .metric-panel {
   min-height: 92px;
-  padding: 14px;
-  border-radius: 8px;
-  background: var(--surface-muted);
+  padding: 16px;
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-card);
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -132,12 +182,15 @@
 
 .metric-panel.accent {
   background: var(--success-bg);
+  border-color: color-mix(in srgb, var(--st-ready) 24%, var(--border));
 }
 
 .metric-panel span {
-  font-size: 2rem;
-  font-weight: 850;
+  font-family: var(--font-display);
+  font-size: 2.1rem;
+  font-weight: 800;
   line-height: 1;
+  letter-spacing: -0.02em;
 }
 
 .metric-panel p {
@@ -147,10 +200,11 @@
   font-weight: 700;
 }
 
+/* ---------- quick intake ---------- */
 .quick-row {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 9px;
+  gap: 10px;
 }
 
 .quick-row.two {
@@ -158,8 +212,8 @@
 }
 
 .quick-row button {
-  min-height: 58px;
-  border-radius: 8px;
+  min-height: 64px;
+  border-radius: var(--radius-card);
   background: var(--surface);
   border: 1px solid var(--border);
   color: var(--text);
@@ -167,17 +221,23 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  font-size: 0.82rem;
+  gap: 7px;
+  font-size: 0.8rem;
   font-weight: 800;
+  box-shadow: var(--shadow-card);
+}
+
+.quick-row button:active {
+  transform: translateY(1px) scale(0.98);
 }
 
 .quick-row svg {
   width: 22px;
   height: 22px;
-  color: var(--brand-sky-blue);
+  color: var(--st-review);
 }
 
+/* ---------- section heads ---------- */
 .section-head {
   display: flex;
   align-items: center;
@@ -186,46 +246,55 @@
 
 .section-head h2 {
   margin: 0;
-  font-size: 1rem;
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 800;
 }
 
 .section-head span {
-  min-width: 28px;
-  min-height: 28px;
-  border-radius: 8px;
-  background: var(--brand-purple);
-  color: var(--brand-white);
+  min-width: 26px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  color: var(--text-muted);
   display: grid;
   place-items: center;
-  font-size: 0.82rem;
-  font-weight: 800;
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  font-weight: 700;
 }
 
 .statement-status {
   margin: -8px 0 0;
-  color: var(--brand-sky-blue);
+  color: var(--st-ready);
   font-size: 0.82rem;
   font-weight: 800;
 }
 
+/* ---------- expense / report cards ---------- */
 .expense-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
 }
 
 .expense-card,
 .report-panel {
-  min-height: 88px;
-  padding: 12px;
+  min-height: 84px;
+  padding: 16px 18px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 22px;
   background: var(--surface);
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
   box-shadow: var(--shadow-card);
+}
+
+.expense-card:active {
+  transform: scale(0.99);
 }
 
 .expense-main {
@@ -234,16 +303,20 @@
 
 .expense-main h3,
 .report-panel h2 {
-  margin: 7px 0 3px;
-  font-size: 0.98rem;
-  line-height: 1.18;
+  margin: 9px 0 3px;
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 800;
+  line-height: 1.16;
+  letter-spacing: -0.01em;
 }
 
 .expense-main p,
 .report-panel p {
   margin: 0;
   color: var(--text-muted);
-  font-size: 0.78rem;
+  font-size: 0.8rem;
+  font-weight: 600;
 }
 
 .expense-amount {
@@ -253,75 +326,95 @@
 
 .expense-amount strong {
   display: block;
-  font-size: 0.95rem;
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
 }
 
-.expense-amount span {
-  color: var(--text-muted);
-  font-size: 0.74rem;
+.expense-amount span,
+.expense-amount small {
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
 }
 
+/* ---------- filled status chips (Spectrum) ---------- */
 .status-pill {
   display: inline-flex;
   align-items: center;
+  gap: 6px;
   min-height: 24px;
-  padding: 0 8px;
-  border-radius: 8px;
+  padding: 0 11px;
+  border-radius: var(--radius-pill);
   font-size: 0.68rem;
-  font-weight: 850;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  color: var(--brand-white);
 }
 
 .status-pill.ready {
-  background: var(--success-bg);
-  color: var(--brand-sky-blue);
+  background: var(--st-ready);
 }
 
 .status-pill.review {
-  background: rgba(190, 40, 120, 0.11);
-  color: var(--brand-violet);
+  background: var(--st-review);
 }
 
 .status-pill.match {
-  background: rgba(70, 10, 120, 0.11);
-  color: var(--brand-purple);
+  background: var(--st-match);
 }
 
 .status-pill.fx {
-  background: var(--warning-bg);
-  color: #7a4a00;
+  background: var(--st-fx);
+  color: #3a2a00;
 }
 
 .status-pill.declare,
 .status-pill.duplicate,
 .status-pill.context {
-  background: var(--danger-bg);
-  color: var(--brand-hot-orange);
+  background: var(--st-declare);
 }
 
+/* ---------- capture camera panel ---------- */
 .camera-panel {
-  min-height: 280px;
-  border-radius: 8px;
+  min-height: 240px;
+  border-radius: var(--radius-card);
   background: var(--brand-gradient);
   color: var(--brand-white);
   display: grid;
   place-items: center;
   align-content: center;
-  gap: 16px;
-  box-shadow: 0 20px 34px rgba(70, 10, 120, 0.18);
+  gap: 14px;
+  box-shadow: 0 20px 40px -16px rgba(70, 10, 120, 0.45);
 }
 
 .camera-panel svg {
-  width: 68px;
-  height: 68px;
+  width: 60px;
+  height: 60px;
 }
 
 .camera-panel span {
-  font-size: 1.25rem;
-  font-weight: 850;
+  font-family: var(--font-display);
+  font-size: 1.3rem;
+  font-weight: 800;
 }
 
+/* ---------- reports / folders ---------- */
 .report-panel {
   grid-template-columns: 42px minmax(0, 1fr) auto;
+}
+
+.report-panel > svg {
+  width: 30px;
+  height: 30px;
+  color: var(--st-ready);
+}
+
+.report-panel strong {
+  color: var(--st-match);
+  font-size: 0.82rem;
+  font-weight: 800;
 }
 
 .folder-create {
@@ -338,30 +431,37 @@
 .folder-create label {
   display: grid;
   gap: 6px;
+  min-width: 0;
 }
 
 .folder-create span {
   color: var(--text-muted);
   font-size: 0.76rem;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .folder-create input {
   width: 100%;
-  min-height: 46px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  min-width: 0;
+  min-height: 50px;
+  border: 1.5px solid var(--border-strong);
+  border-radius: var(--radius-control);
   background: var(--surface);
   color: var(--text);
-  padding: 10px 12px;
-  font-weight: 750;
+  padding: 12px 14px;
+  font-weight: 600;
+}
+
+.folder-create input:focus {
+  outline: 0;
+  border-color: var(--st-review);
 }
 
 .folder-create button {
-  min-height: 46px;
+  min-height: 50px;
   width: 50px;
-  border-radius: 8px;
-  background: var(--brand-sky-blue);
+  border-radius: var(--radius-control);
+  background: var(--st-ready);
   color: var(--brand-white);
   display: grid;
   place-items: center;
@@ -377,17 +477,6 @@
   height: 21px;
 }
 
-.report-panel > svg {
-  width: 32px;
-  height: 32px;
-  color: var(--brand-sky-blue);
-}
-
-.report-panel strong {
-  color: var(--brand-purple);
-  font-size: 0.82rem;
-}
-
 .report-actions {
   display: grid;
   justify-items: end;
@@ -401,11 +490,11 @@
 
 .report-actions button,
 .report-edit button {
-  width: 34px;
-  height: 34px;
-  border-radius: 8px;
-  background: var(--surface-soft);
-  color: var(--brand-purple);
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  background: var(--surface-2);
+  color: var(--st-match);
   display: grid;
   place-items: center;
 }
@@ -429,13 +518,13 @@
 
 .report-edit input {
   width: 100%;
-  min-height: 42px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  min-height: 46px;
+  border: 1.5px solid var(--border-strong);
+  border-radius: var(--radius-control);
   background: var(--surface);
   color: var(--text);
-  padding: 8px 10px;
-  font-weight: 800;
+  padding: 10px 12px;
+  font-weight: 700;
 }
 
 .report-edit > div {
@@ -443,6 +532,18 @@
   gap: 6px;
 }
 
+@media (max-width: 480px) {
+  .folder-create {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .folder-create button {
+    grid-column: 2;
+    justify-self: end;
+  }
+}
+
+/* ---------- export checklist ---------- */
 .export-checklist {
   display: flex;
   flex-direction: column;
@@ -450,19 +551,365 @@
 }
 
 .export-checklist p {
-  min-height: 54px;
+  min-height: 56px;
   margin: 0;
-  padding: 0 12px;
+  padding: 0 16px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-weight: 800;
+  gap: 12px;
+  font-weight: 700;
 }
 
 .export-checklist svg {
   width: 22px;
   height: 22px;
-  color: var(--brand-sky-blue);
+  color: var(--st-ready);
+}
+
+/* ============================================================
+   Spectrum structural additions (hero stats, ring, readiness,
+   filter chips, detail summary) — used by the aligned screens.
+   ============================================================ */
+
+/* hero stat row (ring + figures) inside .screen-header */
+.hero-stats {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: flex-end;
+  gap: 18px;
+  margin-top: 20px;
+}
+
+.hero-stat .v {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 1.65rem;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+.hero-stat .v.sm {
+  font-size: 1.15rem;
+}
+
+.hero-stat .l {
+  margin-top: 5px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  opacity: 0.86;
+}
+
+.hero-stat.push {
+  margin-left: auto;
+  text-align: right;
+}
+
+/* header with a stat row needs the title left-aligned, full width */
+.screen-header.has-stats {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+}
+
+.screen-header .hero-top {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.screen-header .hero-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* readiness ring */
+.ready-ring {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.ready-ring svg {
+  transform: rotate(-90deg);
+}
+
+.ready-ring-pct {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  line-height: 1;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 0.92rem;
+  letter-spacing: -0.02em;
+  color: var(--brand-white);
+}
+
+/* readiness float-card pulled over the hero */
+.readiness-card {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 13px;
+  width: auto;
+  text-align: left;
+  margin-top: -22px !important;
+  position: relative;
+  z-index: 5;
+  padding: 14px 16px;
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-card);
+}
+
+.readiness-card .readiness-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 13px;
+  display: grid;
+  place-items: center;
+  color: var(--brand-white);
+  background: var(--brand-gradient);
+}
+
+.readiness-card .readiness-icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.readiness-title {
+  display: block;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 0.95rem;
+  letter-spacing: -0.01em;
+}
+
+.readiness-sub {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.readiness-card > svg {
+  width: 20px;
+  height: 20px;
+  color: var(--text-faint);
+}
+
+.readiness-bar {
+  height: 5px;
+  margin-top: 8px;
+  border-radius: 3px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.readiness-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--brand-gradient);
+}
+
+.readiness-bar > span.full {
+  background: var(--st-ready);
+}
+
+/* filter chips */
+.filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.filter-chips button {
+  height: 36px;
+  padding: 0 15px;
+  border-radius: var(--radius-pill);
+  border: 1.5px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.filter-chips button.active {
+  border-color: transparent;
+  background: var(--text);
+  color: var(--surface);
+}
+
+.filter-chips button .count {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  opacity: 0.6;
+}
+
+/* detail summary hero card */
+.detail-summary {
+  margin-top: -22px !important;
+  position: relative;
+  z-index: 5;
+  padding: 16px;
+  border-radius: var(--radius-card);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+
+.detail-summary .ds-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.detail-summary .ds-top > div:first-child {
+  min-width: 0;
+}
+
+.detail-summary .ds-top .status-pill {
+  margin-bottom: 9px;
+}
+
+.detail-summary .ds-merchant,
+.detail-summary .ds-meta {
+  display: block;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.detail-summary .ds-merchant {
+  margin: 0 0 3px;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 1.15rem;
+  letter-spacing: -0.01em;
+  line-height: 1.12;
+}
+
+.detail-summary .ds-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.detail-summary .ds-meta svg {
+  width: 13px;
+  height: 13px;
+}
+
+.detail-summary .ds-amount {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.detail-summary .ds-amount strong {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 1.35rem;
+  letter-spacing: -0.02em;
+}
+
+.detail-summary .ds-amount span {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+}
+
+.detail-summary .ds-fx {
+  display: flex;
+  gap: 16px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.detail-summary .ds-fx .k {
+  font-size: 0.64rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+}
+
+.detail-summary .ds-fx .val {
+  margin-top: 2px;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+/* Cards — mono charge descriptions + amounts */
+.cards-screen .expense-main p,
+.cards-screen .expense-amount strong,
+.cards-screen .expense-amount span {
+  font-family: var(--font-mono);
+}
+
+.cards-screen .expense-amount strong {
+  font-weight: 700;
+  font-size: 1.05rem;
+  letter-spacing: -0.01em;
+}
+
+.cards-screen .expense-main h3 {
+  font-family: var(--font-display);
+}
+
+/* Export — blocker rows read as cards with a status accent */
+.export-checklist p {
+  position: relative;
+  padding-left: 18px;
+  overflow: hidden;
+}
+
+.export-checklist p::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: var(--st-declare);
+}
+
+.export-checklist p:first-child:last-child::before {
+  background: var(--st-ready);
+}
+
+.export-checklist svg {
+  width: 22px;
+  height: 22px;
+  color: var(--st-declare);
+}
+
+.export-checklist p:first-child:last-child svg {
+  color: var(--st-ready);
 }

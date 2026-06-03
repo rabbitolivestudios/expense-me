@@ -75,7 +75,7 @@ export function CardsScreen({
   }
 
   return (
-    <section className="screen-stack" aria-labelledby="cards-title">
+    <section className="screen-stack cards-screen" aria-labelledby="cards-title">
       <header className="screen-header">
         <button className="back-button" type="button" aria-label="Back to Inbox" onClick={onBack}>
           <ArrowLeft aria-hidden="true" />
@@ -106,7 +106,7 @@ export function CardsScreen({
       {unmatched.map((charge) => (
         <article className="expense-card" key={charge.id}>
           <div className="expense-main">
-            <span className="status-pill match">Match</span>
+            <span className="status-pill review">Unmatched</span>
             <h3>{charge.description}</h3>
             <p>
               {charge.originalAmount.toFixed(2)} {charge.originalCurrency}

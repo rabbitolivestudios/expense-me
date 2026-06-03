@@ -22,6 +22,13 @@ interface ExpenseDetailScreenProps {
 }
 
 const paymentMethods: PaymentMethod[] = ["Credit Card", "Personal Card", "Cash", "Company Paid"];
+
+// Common business-travel currencies. ISO 4217 codes.
+const currencyOptions = [
+  "USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "SGD", "CNY", "HKD",
+  "INR", "MXN", "BRL", "SEK", "NOK", "DKK", "PLN", "AED", "ZAR", "KRW", "TRY"
+] as const;
+
 type DetailFieldKey =
   | "reportId"
   | "subExpenseType"
@@ -31,6 +38,7 @@ type DetailFieldKey =
   | "paymentMethod"
   | "originalAmount"
   | "originalCurrency"
+  | "fxRate"
   | "finalUsdAmount"
   | "description"
   | "mealPeopleCount";
@@ -40,6 +48,38 @@ type DetailFieldErrors = Partial<Record<DetailFieldKey, string>>;
 function updateNumber(value: string) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function formatMoney(amount: number, currency: string) {
+  const safeCurrency = /^[A-Z]{3}$/.test(currency) ? currency : "USD";
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: safeCurrency, maximumFractionDigits: 2 }).format(amount);
+}
+
+function summaryLabelFor(status: string) {
+  if (status === "Declare") return "No receipt";
+  if (status === "FX") return "Check FX";
+  if (status === "Match") return "Card match";
+  return status;
+}
+
+function round2(value: number) {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+/**
+ * Final USD is derived, not entered:
+ *   USD expense        -> the original amount
+ *   Foreign expense    -> originalAmount * fxRate + foreignTransactionFee
+ * Returns undefined when a foreign expense has no usable FX rate yet.
+ */
+function computeFinalUsd(expense: Expense): number | undefined {
+  if (expense.originalCurrency === "USD") {
+    return Number.isFinite(expense.originalAmount) ? round2(expense.originalAmount) : undefined;
+  }
+  const rate = Number(expense.fxRate);
+  if (!Number.isFinite(rate) || rate <= 0) return undefined;
+  const fee = Number.isFinite(Number(expense.foreignTransactionFee)) ? Number(expense.foreignTransactionFee) : 0;
+  return round2(expense.originalAmount * rate + fee);
 }
 
 function FieldLabel({ children, required = true }: { children: string; required?: boolean }) {
@@ -59,13 +99,10 @@ function getValidationErrors(expense: Expense): DetailFieldErrors {
     errors.originalAmount = "Enter an amount greater than zero.";
   }
   if (!/^[A-Z]{3}$/.test(expense.originalCurrency)) {
-    errors.originalCurrency = "Use a 3-letter currency code.";
+    errors.originalCurrency = "Choose a currency.";
   }
-  if (
-    expense.originalCurrency !== "USD" &&
-    (!Number.isFinite(expense.finalUsdAmount) || Number(expense.finalUsdAmount) <= 0)
-  ) {
-    errors.finalUsdAmount = "Confirm final USD amount.";
+  if (expense.originalCurrency !== "USD" && (!Number.isFinite(Number(expense.fxRate)) || Number(expense.fxRate) <= 0)) {
+    errors.fxRate = "Enter the FX rate used.";
   }
   if (!expense.description.trim()) errors.description = "Enter an expense description.";
   if (isMealExpenseType(expense.expenseType) && (!expense.mealPeopleCount || expense.mealPeopleCount <= 0)) {
@@ -89,6 +126,9 @@ export function ExpenseDetailScreen({ expense, onBack, onCreateDeclaration, onCr
   }, [expense]);
 
   const needsDeclaration = draft.receiptArtifactIds.length === 0 && !draft.declarationId;
+  const isForeign = draft.originalCurrency !== "USD";
+  const derivedUsd = computeFinalUsd(draft);
+  const summaryStatusLabel = summaryLabelFor(draft.status);
 
   function update<K extends keyof Expense>(key: K, value: Expense[K]) {
     setDraft((current) => ({ ...current, [key]: value }));
@@ -116,6 +156,16 @@ export function ExpenseDetailScreen({ expense, onBack, onCreateDeclaration, onCr
     });
   }
 
+  function updateCurrency(nextCurrency: string) {
+    setDraft((current) => {
+      if (nextCurrency === "USD") {
+        // USD expenses carry no FX rate / foreign fee.
+        return { ...current, originalCurrency: "USD", fxRate: undefined, foreignTransactionFee: undefined };
+      }
+      return { ...current, originalCurrency: nextCurrency };
+    });
+  }
+
   function updateRegion(region: Region) {
     setDraft((current) => {
       const countryOptions = getCountryOptions(region);
@@ -136,6 +186,7 @@ export function ExpenseDetailScreen({ expense, onBack, onCreateDeclaration, onCr
 
     const saved: Expense = {
       ...draft,
+      finalUsdAmount: computeFinalUsd(draft),
       status: draft.receiptArtifactIds.length > 0 || draft.declarationId ? "Ready" : draft.status
     };
     onSave(saved);
@@ -154,6 +205,7 @@ export function ExpenseDetailScreen({ expense, onBack, onCreateDeclaration, onCr
   const repeatsParentOnly = subExpenseTypeOptions.length === 1 && subExpenseTypeOptions[0] === draft.expenseType;
   const countryOptions = getCountryOptions(draft.region);
   const countrySelectValue = countryOptions.includes(draft.country) ? draft.country : "";
+  const currencySelectValue = (currencyOptions as readonly string[]).includes(draft.originalCurrency) ? draft.originalCurrency : "";
   const validationErrors = getValidationErrors(draft);
   const visibleErrors = showValidation ? validationErrors : {};
   const reportSelectValue = reports.some((report) => report.id === draft.reportId) ? draft.reportId ?? "" : "";
@@ -190,6 +242,36 @@ export function ExpenseDetailScreen({ expense, onBack, onCreateDeclaration, onCr
           <h1 id="detail-title">Expense Detail</h1>
         </div>
       </header>
+
+      <div className="detail-summary">
+        <div className="ds-top">
+          <div>
+            <span className={`status-pill ${draft.status.toLowerCase()}`}>{summaryStatusLabel}</span>
+            <div className="ds-merchant">{draft.merchant || "New expense"}</div>
+            <div className="ds-meta">{draft.sourceType} · {draft.expenseDate}</div>
+          </div>
+          <div className="ds-amount">
+            <strong>{formatMoney(draft.originalAmount, draft.originalCurrency)}</strong>
+            {isForeign && <span>≈ {derivedUsd !== undefined ? formatMoney(derivedUsd, "USD") : "—"}</span>}
+          </div>
+        </div>
+        {isForeign && (
+          <div className="ds-fx">
+            <div>
+              <div className="k">FX rate</div>
+              <div className="val">{draft.fxRate ? Number(draft.fxRate).toFixed(4) : "—"}</div>
+            </div>
+            <div>
+              <div className="k">Foreign fee</div>
+              <div className="val">{formatMoney(Number(draft.foreignTransactionFee) || 0, "USD")}</div>
+            </div>
+            <div>
+              <div className="k">Confidence</div>
+              <div className="val">{Math.round((draft.confidence ?? 0) * 100)}%</div>
+            </div>
+          </div>
+        )}
+      </div>
 
       <div className="detail-grid">
         <label className={fieldClass("reportId")}>
@@ -357,28 +439,69 @@ export function ExpenseDetailScreen({ expense, onBack, onCreateDeclaration, onCr
         </label>
         <label className={fieldClass("originalCurrency")}>
           <FieldLabel>Currency</FieldLabel>
-          <input
+          <select
             aria-label="Currency"
-            maxLength={3}
-            value={draft.originalCurrency}
-            onChange={(event) => update("originalCurrency", event.target.value.toUpperCase())}
+            value={currencySelectValue}
+            onChange={(event) => updateCurrency(event.target.value)}
             aria-invalid={Boolean(errorFor("originalCurrency"))}
             aria-describedby={describedBy("originalCurrency")}
-          />
+          >
+            <option value="" disabled>
+              Select currency
+            </option>
+            {currencyOptions.map((code) => (
+              <option key={code} value={code}>
+                {code}
+              </option>
+            ))}
+          </select>
           <FieldError field="originalCurrency" />
         </label>
-        <label className={fieldClass("finalUsdAmount")}>
-          <FieldLabel required={draft.originalCurrency !== "USD"}>Final USD</FieldLabel>
+        {isForeign && (
+          <>
+            <label className={fieldClass("fxRate")}>
+              <FieldLabel>FX rate</FieldLabel>
+              <input
+                aria-label="FX rate"
+                inputMode="decimal"
+                type="number"
+                step="0.0001"
+                value={draft.fxRate ?? ""}
+                onChange={(event) => update("fxRate", event.target.value ? updateNumber(event.target.value) : undefined)}
+                aria-invalid={Boolean(errorFor("fxRate"))}
+                aria-describedby={describedBy("fxRate")}
+              />
+              <FieldError field="fxRate" />
+            </label>
+            <label className="detail-field">
+              <FieldLabel required={false}>Foreign transaction fee (USD)</FieldLabel>
+              <input
+                aria-label="Foreign transaction fee"
+                inputMode="decimal"
+                type="number"
+                step="0.01"
+                value={draft.foreignTransactionFee ?? ""}
+                onChange={(event) =>
+                  update("foreignTransactionFee", event.target.value ? updateNumber(event.target.value) : undefined)
+                }
+              />
+            </label>
+          </>
+        )}
+        <label className="detail-field detail-final-usd">
+          <FieldLabel required={false}>Final USD</FieldLabel>
           <input
             aria-label="Final USD"
-            inputMode="decimal"
-            type="number"
-            value={draft.finalUsdAmount ?? ""}
-            onChange={(event) => update("finalUsdAmount", event.target.value ? updateNumber(event.target.value) : undefined)}
-            aria-invalid={Boolean(errorFor("finalUsdAmount"))}
-            aria-describedby={describedBy("finalUsdAmount")}
+            type="text"
+            readOnly
+            tabIndex={-1}
+            value={derivedUsd !== undefined ? derivedUsd.toFixed(2) : ""}
+            placeholder={isForeign ? "Enter FX rate to calculate" : ""}
+            title="Calculated automatically: amount × FX rate + foreign transaction fee"
           />
-          <FieldError field="finalUsdAmount" />
+          <small className="field-hint">
+            {isForeign ? "Auto: amount × FX rate + foreign fee" : "Same as amount for USD expenses"}
+          </small>
         </label>
         {isMealExpenseType(draft.expenseType) && (
           <label className={fieldClass("mealPeopleCount")}>

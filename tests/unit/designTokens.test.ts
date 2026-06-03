@@ -8,6 +8,7 @@ describe("brand tokens", () => {
     expect(css).toContain("--brand-purple: #460a78");
     expect(css).toContain("--brand-hot-orange: #ff3700");
     expect(css).toContain("--brand-sky-blue: #0072ce");
-    expect(css).toContain("--font-ui: Gilroy");
+    // Spectrum: Gilroy is the brand display face, Manrope drives UI text.
+    expect(css).toContain('--font-display: "Gilroy"');
   });
 });

@@ -1,6 +1,22 @@
-import { CreditCard, FileText, FolderInput, MailCheck, Pencil, ReceiptText, RotateCw, Trash2, X } from "lucide-react";
+import {
+  ChevronRight,
+  CreditCard,
+  Download,
+  FileText,
+  FolderInput,
+  MailCheck,
+  Moon,
+  Pencil,
+  ReceiptText,
+  RotateCw,
+  Sun,
+  Trash2,
+  X
+} from "lucide-react";
 import { useRef, useState } from "react";
 import type { Expense, Report } from "../../domain/types";
+import { ReadyRing } from "../../components/ReadyRing";
+import type { ThemeMode } from "../shell/useTheme";
 import "./inbox.css";
 
 interface InboxScreenProps {
@@ -13,7 +29,10 @@ interface InboxScreenProps {
   onRenameExpense: (expenseId: string, name: string) => void;
   onCapture: () => void;
   onOpenCards: () => void;
+  onOpenExport: () => void;
   onSyncEmail: () => Promise<number>;
+  theme: ThemeMode;
+  onToggleTheme: () => void;
 }
 
 function titleForExpense(expense: Expense) {
@@ -24,6 +43,13 @@ function statusClass(status: Expense["status"]) {
   return status.toLowerCase();
 }
 
+function statusLabel(status: Expense["status"]) {
+  if (status === "Declare") return "No receipt";
+  if (status === "FX") return "Check FX";
+  if (status === "Match") return "Card match";
+  return status;
+}
+
 function detailForExpense(expense: Expense) {
   return [expense.city, expense.subExpenseType].filter(Boolean).join(" · ");
 }
@@ -32,12 +58,32 @@ function folderNameForExpense(expense: Expense, reports: Report[]) {
   return reports.find((report) => report.id === expense.reportId)?.name ?? "No Expense Folder";
 }
 
+function usdValue(expense: Expense) {
+  return expense.finalUsdAmount ?? expense.originalAmount ?? 0;
+}
+
+function formatUsd(amount: number) {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(amount);
+}
+
+function formatMoney(amount: number, currency: string) {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency, maximumFractionDigits: 2 }).format(amount);
+}
+
 interface SwipeState {
   expenseId: string;
   startX: number;
 }
 
 type RevealedAction = "assign" | "delete";
+type InboxFilter = "all" | "attention" | "declare" | "ready";
+
+const filterDefs: { key: InboxFilter; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "attention", label: "To review" },
+  { key: "declare", label: "No receipt" },
+  { key: "ready", label: "Ready" }
+];
 
 export function InboxScreen({
   expenses,
@@ -49,10 +95,14 @@ export function InboxScreen({
   onRenameExpense,
   onCapture,
   onOpenCards,
-  onSyncEmail
+  onOpenExport,
+  onSyncEmail,
+  theme,
+  onToggleTheme
 }: InboxScreenProps) {
   const [syncStatus, setSyncStatus] = useState("");
   const [syncing, setSyncing] = useState(false);
+  const [filter, setFilter] = useState<InboxFilter>("all");
   const [revealedExpenseId, setRevealedExpenseId] = useState<string | null>(null);
   const [revealedAction, setRevealedAction] = useState<RevealedAction | null>(null);
   const [confirmingExpenseId, setConfirmingExpenseId] = useState<string | null>(null);
@@ -65,8 +115,30 @@ export function InboxScreen({
   const swipeState = useRef<SwipeState | null>(null);
   const longPressTimer = useRef<number | null>(null);
   const suppressNextOpen = useRef<string | null>(null);
+
   const attention = expenses.filter((expense) => expense.status !== "Ready");
   const ready = expenses.filter((expense) => expense.status === "Ready");
+
+  // Active Expense Folder (Export's default) drives the hero ring + readiness band.
+  const activeFolder = reports[0];
+  const folderExpenses = activeFolder ? expenses.filter((expense) => expense.reportId === activeFolder.id) : [];
+  const folderReady = folderExpenses.filter((expense) => expense.status === "Ready").length;
+  const folderTotal = folderExpenses.reduce((sum, expense) => sum + usdValue(expense), 0);
+  const folderPct = folderExpenses.length > 0 ? Math.round((folderReady / folderExpenses.length) * 100) : 0;
+
+  const counts: Record<InboxFilter, number> = {
+    all: expenses.length,
+    attention: attention.length,
+    declare: expenses.filter((expense) => expense.status === "Declare").length,
+    ready: ready.length
+  };
+
+  const shown = expenses.filter((expense) => {
+    if (filter === "all") return true;
+    if (filter === "attention") return expense.status !== "Ready";
+    if (filter === "declare") return expense.status === "Declare";
+    return expense.status === "Ready";
+  });
 
   async function syncEmail() {
     setSyncing(true);
@@ -80,10 +152,6 @@ export function InboxScreen({
     } finally {
       setSyncing(false);
     }
-  }
-
-  function titleForDelete(expense: Expense) {
-    return titleForExpense(expense);
   }
 
   function startSwipe(expenseId: string, clientX: number) {
@@ -220,7 +288,8 @@ export function InboxScreen({
     const isAssigning = assigningExpenseId === expense.id;
     const isActionMenuOpen = actionMenuExpenseId === expense.id;
     const isRenaming = renamingExpenseId === expense.id;
-    const title = titleForDelete(expense);
+    const title = titleForExpense(expense);
+    const isForeign = expense.originalCurrency !== "USD";
 
     return (
       <div className={`swipe-row ${isDeleteRevealed ? "is-delete-revealed" : ""} ${isAssignRevealed ? "is-assign-revealed" : ""}`} key={expense.id}>
@@ -270,20 +339,17 @@ export function InboxScreen({
           onTouchEnd={endSwipe}
         >
           <span className="expense-main">
-            <span className={`status-pill ${statusClass(expense.status)}`}>{expense.status}</span>
+            <span className={`status-pill ${statusClass(expense.status)}`}>{statusLabel(expense.status)}</span>
             <strong>{titleForExpense(expense)}</strong>
             <small>{detailForExpense(expense)}</small>
             <small className="folder-line">{folderNameForExpense(expense, reports)}</small>
           </span>
           <span className="expense-amount">
-            <strong>
-              {new Intl.NumberFormat("en-US", {
-                style: "currency",
-                currency: expense.originalCurrency,
-                maximumFractionDigits: 2
-              }).format(expense.originalAmount)}
-            </strong>
-            <small>{expense.expenseDate}</small>
+            <strong>{formatMoney(expense.originalAmount, expense.originalCurrency)}</strong>
+            <small>
+              {isForeign ? `${formatMoney(usdValue(expense), "USD")} · ` : ""}
+              {expense.expenseDate}
+            </small>
           </span>
         </button>
         {isActionMenuOpen && (
@@ -302,10 +368,14 @@ export function InboxScreen({
               <Pencil aria-hidden="true" />
               Rename
             </button>
-            <button type="button" aria-label={`Delete ${title}`} onClick={() => {
-              setActionMenuExpenseId(null);
-              setConfirmingExpenseId(expense.id);
-            }}>
+            <button
+              type="button"
+              aria-label={`Delete ${title}`}
+              onClick={() => {
+                setActionMenuExpenseId(null);
+                setConfirmingExpenseId(expense.id);
+              }}
+            >
               <Trash2 aria-hidden="true" />
               Delete
             </button>
@@ -371,10 +441,13 @@ export function InboxScreen({
               </button>
             </div>
             <div className="assignment-actions">
-              <button type="button" onClick={() => {
-                setAssigningExpenseId(null);
-                setNewFolderName("");
-              }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setAssigningExpenseId(null);
+                  setNewFolderName("");
+                }}
+              >
                 Cancel
               </button>
               <button className="confirm-assign" type="button" disabled={!assignDraftReportId} onClick={() => confirmAssign(expense.id)}>
@@ -389,18 +462,59 @@ export function InboxScreen({
 
   return (
     <section className="screen-stack inbox-screen" aria-labelledby="screen-title">
-      <header className="screen-header">
-        <div>
+      <header className="screen-header has-stats">
+        <div className="hero-top">
           <div className="brand-lockup">
             <img src="/icons/expense-me-icon-192.png" alt="Expense Me app icon" />
             <span className="brand-name">Expense Me</span>
           </div>
+          <div className="hero-actions">
+            <button className="icon-button" type="button" aria-label="Toggle dark mode" onClick={onToggleTheme}>
+              {theme === "dark" ? <Sun aria-hidden="true" /> : <Moon aria-hidden="true" />}
+            </button>
+            <button className="icon-button" type="button" aria-label="Sync email now" onClick={() => void syncEmail()} disabled={syncing}>
+              <RotateCw aria-hidden="true" />
+            </button>
+          </div>
+        </div>
+        <div>
+          {activeFolder && <p className="eyebrow">{activeFolder.name}</p>}
           <h1 id="screen-title">Inbox</h1>
         </div>
-        <button className="icon-button" type="button" aria-label="Sync email now" onClick={() => void syncEmail()} disabled={syncing}>
-          <RotateCw aria-hidden="true" />
-        </button>
+        <div className="hero-stats">
+          <ReadyRing pct={folderPct} />
+          <div className="hero-stat">
+            <div className="v">{attention.length}</div>
+            <div className="l">To review</div>
+          </div>
+          <div className="hero-stat">
+            <div className="v">{ready.length}</div>
+            <div className="l">Ready</div>
+          </div>
+          <div className="hero-stat push">
+            <div className="v sm">{formatUsd(folderTotal)}</div>
+            <div className="l">In folder</div>
+          </div>
+        </div>
       </header>
+
+      <button className="readiness-card" type="button" onClick={onOpenExport} aria-label="Open Export Package">
+        <span className="readiness-icon">
+          <Download aria-hidden="true" />
+        </span>
+        <span>
+          <span className="readiness-title">
+            {folderPct === 100 ? "Ready to build package" : `${Math.max(0, folderExpenses.length - folderReady)} to finish`}
+          </span>
+          <span className="readiness-sub">
+            {activeFolder?.name ?? "Expense Folder"} · {folderReady}/{folderExpenses.length} ready
+          </span>
+          <span className="readiness-bar">
+            <span className={folderPct === 100 ? "full" : ""} style={{ width: `${folderPct}%` }} />
+          </span>
+        </span>
+        <ChevronRight aria-hidden="true" />
+      </button>
 
       <div className="sync-strip">
         <MailCheck aria-hidden="true" />
@@ -408,17 +522,6 @@ export function InboxScreen({
         <strong>{syncing ? "Syncing" : "Auto sync"}</strong>
       </div>
       {syncStatus && <p className="inline-status">{syncStatus}</p>}
-
-      <div className="metric-grid" aria-label="Expense summary">
-        <div className="metric-panel">
-          <span>{attention.length}</span>
-          <p>Needs review</p>
-        </div>
-        <div className="metric-panel accent">
-          <span>{ready.length}</span>
-          <p>Ready</p>
-        </div>
-      </div>
 
       <div className="quick-row" aria-label="Quick intake actions">
         <button type="button" aria-label="Start receipt capture" onClick={onCapture}>
@@ -439,35 +542,34 @@ export function InboxScreen({
         </button>
       </div>
 
-      <div className="section-head">
-        <h2>Needs attention</h2>
-        <span>{attention.length}</span>
+      <div className="filter-chips" role="tablist" aria-label="Filter expenses">
+        {filterDefs.map((def) => (
+          <button
+            key={def.key}
+            type="button"
+            role="tab"
+            aria-selected={filter === def.key}
+            className={filter === def.key ? "active" : ""}
+            onClick={() => setFilter(def.key)}
+          >
+            {def.label}
+            <span className="count">{counts[def.key]}</span>
+          </button>
+        ))}
       </div>
 
       <div className="expense-list">
-        {attention.length === 0 && (
+        {shown.length === 0 && (
           <article className="expense-card">
             <span className="expense-main">
               <span className="status-pill ready">Ready</span>
-              <strong>No expenses yet</strong>
-              <small>Capture a receipt, upload a PDF, sync email, or import a statement.</small>
+              <strong>All clear here</strong>
+              <small>Nothing matches this filter. Capture a receipt or sync your email.</small>
             </span>
           </article>
         )}
-        {attention.map(renderExpense)}
+        {shown.map(renderExpense)}
       </div>
-
-      {ready.length > 0 && (
-        <>
-          <div className="section-head compact">
-            <h2>Ready</h2>
-            <span>{ready.length}</span>
-          </div>
-          <div className="expense-list">
-            {ready.map(renderExpense)}
-          </div>
-        </>
-      )}
     </section>
   );
 }

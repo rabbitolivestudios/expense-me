@@ -1,4 +1,17 @@
+/* ============================================================
+   Expense Me — Spectrum design tokens
+   Adapted from the "Spectrum" canonical direction.
+   Every original token name is preserved so existing class
+   styles keep working; values are retuned to Spectrum and a
+   dark theme is added (auto via prefers-color-scheme, or force
+   with [data-theme="dark"] / [data-theme="light"] on <html>).
+   ============================================================ */
+
+@import url("https://gistcdn.githack.com/mfd/09b70eb47474836f25a21660282ce0fd/raw/e06a670afcb2b861ed2ac4a1ef752d062ef6b46b/Gilroy.css");
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Geist+Mono:wght@500;600&display=swap");
+
 :root {
+  /* ---- Brand constants (unchanged) ---- */
   --brand-purple: #460a78;
   --brand-violet: #be2878;
   --brand-red: #e63c41;
@@ -8,22 +21,115 @@
   --brand-hot-orange: #ff3700;
   --brand-sky-blue: #0072ce;
   --brand-white: #ffffff;
+  --brand-gradient: linear-gradient(135deg, #460a78 0%, #be2878 30%, #e63c41 56%, #f58746 80%, #ffbe6e 100%);
+
+  /* ---- Type: Gilroy for display, Manrope for UI, Geist Mono for figures ---- */
+  --font-ui: "Manrope", system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+  --font-display: "Gilroy", "Manrope", "Segoe UI", Arial, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* ---- Spectrum radii (was 8/10) ---- */
+  --radius-card: 18px;
+  --radius-control: 14px;
+  --radius-pill: 999px;
+  --radius-hero: 30px;
+
+  --bottom-nav-height: 66px;
+
+  /* ---- Light theme surfaces ---- */
   --surface: #ffffff;
-  --surface-muted: #f6f7f9;
-  --surface-soft: #fff6ef;
-  --border: #e3e5e8;
-  --text: #414141;
-  --text-muted: #717171;
+  --surface-muted: #f6f3fa;
+  --surface-2: #f3eff8;
+  --surface-soft: #f7eef4;
+  --border: #ece7f3;
+  --border-strong: #ddd5ea;
+  --text: #1b1430;
+  --text-muted: #6a6280;
+  --text-faint: #a49dba;
+
   --success-bg: rgba(0, 114, 206, 0.1);
-  --warning-bg: rgba(255, 190, 110, 0.32);
-  --danger-bg: rgba(255, 55, 0, 0.12);
-  --brand-gradient: linear-gradient(135deg, #460a78 0%, #be2878 32%, #e63c41 58%, #f58746 82%, #ffbe6e 100%);
-  --font-ui: Gilroy, Aptos, "Segoe UI", Arial, sans-serif;
-  --font-display: Gilroy, "Aptos Display", "Segoe UI Variable Display", "Segoe UI", Arial, sans-serif;
-  --radius-card: 8px;
-  --radius-control: 10px;
-  --shadow-card: 0 8px 22px rgba(65, 65, 65, 0.08);
-  --bottom-nav-height: 78px;
+  --warning-bg: rgba(255, 190, 110, 0.3);
+  --danger-bg: rgba(255, 55, 0, 0.1);
+
+  /* status foregrounds (themed) */
+  --st-ready: #0072ce;
+  --st-review: #be2878;
+  --st-declare: #ff3700;
+  --st-fx: #b06a00;
+  --st-match: #460a78;
+
+  /* shadows — soft, layered (Spectrum) */
+  --shadow-card: 0 18px 44px -22px rgba(70, 10, 120, 0.4), 0 2px 8px -4px rgba(70, 10, 120, 0.12);
+  --shadow-pop: 0 18px 44px -16px rgba(70, 10, 120, 0.42);
+
+  --scrim: rgba(40, 20, 60, 0.4);
+  --nav-bg: color-mix(in srgb, #ffffff 80%, transparent);
+
+  color-scheme: light;
+}
+
+/* ---- Dark theme (auto unless [data-theme="light"] forces light) ---- */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --surface: #211934;
+    --surface-muted: #100b1c;
+    --surface-2: #2a2142;
+    --surface-soft: #271d3a;
+    --border: #392d50;
+    --border-strong: #4a3c66;
+    --text: #f6f1fc;
+    --text-muted: #b4aac9;
+    --text-faint: #7c7295;
+
+    --success-bg: rgba(78, 162, 238, 0.16);
+    --warning-bg: rgba(255, 207, 133, 0.18);
+    --danger-bg: rgba(255, 106, 61, 0.16);
+
+    --st-ready: #4ea2ee;
+    --st-review: #e36aa6;
+    --st-declare: #ff6a3d;
+    --st-fx: #ffcf85;
+    --st-match: #bb8ee6;
+
+    --shadow-card: 0 18px 44px -20px rgba(0, 0, 0, 0.7), 0 2px 8px -4px rgba(0, 0, 0, 0.5);
+    --shadow-pop: 0 18px 44px -14px rgba(0, 0, 0, 0.72);
+
+    --scrim: rgba(5, 2, 12, 0.64);
+    --nav-bg: color-mix(in srgb, #211934 80%, transparent);
+
+    color-scheme: dark;
+  }
+}
+
+/* ---- Explicit dark toggle ---- */
+[data-theme="dark"] {
+  --surface: #211934;
+  --surface-muted: #100b1c;
+  --surface-2: #2a2142;
+  --surface-soft: #271d3a;
+  --border: #392d50;
+  --border-strong: #4a3c66;
+  --text: #f6f1fc;
+  --text-muted: #b4aac9;
+  --text-faint: #7c7295;
+
+  --success-bg: rgba(78, 162, 238, 0.16);
+  --warning-bg: rgba(255, 207, 133, 0.18);
+  --danger-bg: rgba(255, 106, 61, 0.16);
+
+  --st-ready: #4ea2ee;
+  --st-review: #e36aa6;
+  --st-declare: #ff6a3d;
+  --st-fx: #ffcf85;
+  --st-match: #bb8ee6;
+
+  --shadow-card: 0 18px 44px -20px rgba(0, 0, 0, 0.7), 0 2px 8px -4px rgba(0, 0, 0, 0.5);
+  --shadow-pop: 0 18px 44px -14px rgba(0, 0, 0, 0.72);
+
+  --scrim: rgba(5, 2, 12, 0.64);
+  --nav-bg: color-mix(in srgb, #211934 80%, transparent);
+
+  color-scheme: dark;
 }
 
 * {
@@ -41,6 +147,8 @@ body {
   background: var(--surface-muted);
   color: var(--text);
   font-family: var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 button,
@@ -48,8 +156,17 @@ input,
 select,
 textarea {
   font: inherit;
+  color: inherit;
 }
 
 button {
   border: 0;
+  cursor: pointer;
+}
+
+/* tabular figures for any element tagged .mono */
+.mono,
+.tnum {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
