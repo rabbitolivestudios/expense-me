@@ -67,6 +67,8 @@ V1 stays live on Vercel at `https://expense-me-tbo.vercel.app` while V1.5 is bui
 
 V1.5 should use Cloudflare Access for the single-user login gate, Cloudflare D1 as the structured source of truth, and Cloudflare R2 for receipt/export artifacts. Browser storage should no longer be the durable source for Expenses, Expense Folders, statement charges, receipt artifacts, or Export Packages.
 
+Cloud snapshots carry cloud-only row version metadata in `recordVersions`. Existing-record mutation requests must send the expected version from the last loaded snapshot so V1.5 does not silently overwrite fresher data from another browser/device. Internal server workflows such as first migration and trusted sync repairs may use explicit force writes after loading current cloud state.
+
 ## Review Gate
 
 Code changes should include app documentation updates when behavior changes. Run Clawpatch (`map`, `review`, `report`) before final commit/deploy and triage findings against V1 scope.

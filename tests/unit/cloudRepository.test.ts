@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { artifactObjectKey, dataUrlToBytes, loadArtifactDataUrl, storeArtifactData } from "../../src/cloudflare/artifactStore";
-import { D1ExpenseMeRepository } from "../../src/cloudflare/d1Repository";
+import { D1ExpenseMeRepository, NonEmptyExpenseFolderError, VersionConflictError } from "../../src/cloudflare/d1Repository";
 import type { CloudflareEnv, WorkspaceContext } from "../../src/cloudflare/types";
 import type { ExportPackage, ReceiptArtifact } from "../../src/domain/types";
 import { seedArtifacts, seedExpenses, seedReports, seedStatementCharges } from "../fixtures";
@@ -33,8 +33,8 @@ function context(): WorkspaceContext {
   };
 }
 
-function encodedRow(value: unknown) {
-  return { payload_json: JSON.stringify(value) };
+function encodedRow(value: unknown, version = 1) {
+  return { payload_json: JSON.stringify(value), version };
 }
 
 describe("D1 Expense Me repository", () => {
@@ -65,11 +65,11 @@ describe("D1 Expense Me repository", () => {
       reconciliationNotesName: "reconciliation-notes.txt"
     };
     const db = createDb((sql) => {
-      if (sql.includes("FROM expenses")) return statement({ all: [encodedRow(seedExpenses[0])] });
-      if (sql.includes("FROM expense_folders")) return statement({ all: [encodedRow(seedReports[0])] });
-      if (sql.includes("FROM receipt_artifacts")) return statement({ all: [encodedRow(seedArtifacts[0])] });
-      if (sql.includes("FROM statement_charges")) return statement({ all: [encodedRow(seedStatementCharges[0])] });
-      if (sql.includes("FROM export_packages")) return statement({ all: [encodedRow(exportPackage)] });
+      if (sql.includes("FROM expenses")) return statement({ all: [encodedRow(seedExpenses[0], 2)] });
+      if (sql.includes("FROM expense_folders")) return statement({ all: [encodedRow(seedReports[0], 3)] });
+      if (sql.includes("FROM receipt_artifacts")) return statement({ all: [encodedRow(seedArtifacts[0], 4)] });
+      if (sql.includes("FROM statement_charges")) return statement({ all: [encodedRow(seedStatementCharges[0], 5)] });
+      if (sql.includes("FROM export_packages")) return statement({ all: [encodedRow(exportPackage, 6)] });
       return statement();
     });
     const repo = new D1ExpenseMeRepository({ EXPENSE_ME_DB: db } as unknown as CloudflareEnv);
@@ -84,12 +84,19 @@ describe("D1 Expense Me repository", () => {
     expect(snapshot.receiptArtifacts).toEqual([seedArtifacts[0]]);
     expect(snapshot.statementCharges).toEqual([seedStatementCharges[0]]);
     expect(snapshot.exportPackages).toEqual([exportPackage]);
+    expect(snapshot.recordVersions).toEqual({
+      expenses: { [seedExpenses[0].id]: 2 },
+      reports: { [seedReports[0].id]: 3 },
+      receiptArtifacts: { [seedArtifacts[0].id]: 4 },
+      statementCharges: { [seedStatementCharges[0].id]: 5 },
+      exportPackages: { [exportPackage.id]: 6 }
+    });
   });
 
   it("strips receipt artifact dataUrl before storing payload_json", async () => {
     let payloadJson = "";
     const db = createDb((sql) => {
-      if (sql.includes("INSERT INTO receipt_artifacts")) {
+      if (sql.includes("INSERT OR IGNORE INTO receipt_artifacts")) {
         return statement({
           onBind: (_id, _workspaceId, payload) => {
             payloadJson = String(payload);
@@ -108,13 +115,13 @@ describe("D1 Expense Me repository", () => {
 
     expect(JSON.parse(payloadJson)).toEqual(expect.objectContaining({ id: artifact.id, storageKey: artifact.storageKey }));
     expect(JSON.parse(payloadJson)).not.toHaveProperty("dataUrl");
-    expect(db.prepare).toHaveBeenCalledTimes(1);
+    expect(db.prepare).toHaveBeenCalledTimes(2);
   });
 
   it("upserts expenses and returns a refreshed snapshot", async () => {
     let payloadJson = "";
     const db = createDb((sql) => {
-      if (sql.includes("INSERT INTO expenses")) {
+      if (sql.includes("INSERT OR IGNORE INTO expenses")) {
         return statement({
           onBind: (_id, _workspaceId, _reportId, payload) => {
             payloadJson = String(payload);
@@ -132,12 +139,76 @@ describe("D1 Expense Me repository", () => {
     expect(JSON.parse(payloadJson)).toMatchObject({ id: seedExpenses[0].id, sourceType: seedExpenses[0].sourceType });
     expect(result.snapshot.expenses).toHaveLength(1);
     expect(result.snapshot.expenses[0].id).toBe(seedExpenses[0].id);
-    expect(db.prepare).toHaveBeenCalledWith(expect.stringContaining("INSERT INTO expenses"));
+    expect(db.prepare).toHaveBeenCalledWith(expect.stringContaining("INSERT OR IGNORE INTO expenses"));
+  });
+
+  it("updates existing expenses only when the expected version matches", async () => {
+    let updateBindValues: unknown[] = [];
+    const db = createDb((sql) => {
+      if (sql.includes("SELECT version FROM expenses")) return statement({ first: { version: 2 } });
+      if (sql.includes("UPDATE expenses")) {
+        return statement({
+          run: { success: true, meta: { changes: 1 } },
+          onBind: (...values) => {
+            updateBindValues = values;
+          }
+        });
+      }
+      if (sql.includes("FROM expenses")) return statement({ all: [encodedRow(seedExpenses[0])] });
+      return statement();
+    });
+    const repo = new D1ExpenseMeRepository({ EXPENSE_ME_DB: db } as unknown as CloudflareEnv);
+
+    const result = await repo.upsertExpense(context(), seedExpenses[0], { expectedVersion: 2 });
+
+    expect(updateBindValues.slice(-3)).toEqual(["workspace-personal", seedExpenses[0].id, 2]);
+    expect(result.snapshot.expenses[0].id).toBe(seedExpenses[0].id);
+    expect(db.prepare).toHaveBeenCalledWith(expect.stringContaining("UPDATE expenses"));
+  });
+
+  it("rejects stale expense updates before overwriting cloud data", async () => {
+    const db = createDb((sql) => {
+      if (sql.includes("SELECT version FROM expenses")) return statement({ first: { version: 2 } });
+      return statement();
+    });
+    const repo = new D1ExpenseMeRepository({ EXPENSE_ME_DB: db } as unknown as CloudflareEnv);
+
+    await expect(repo.upsertExpense(context(), seedExpenses[0], { expectedVersion: 1 })).rejects.toBeInstanceOf(
+      VersionConflictError
+    );
+    expect(db.prepare).not.toHaveBeenCalledWith(expect.stringContaining("UPDATE expenses"));
+  });
+
+  it("rejects stale expense saves when the cloud row was already deleted", async () => {
+    const db = createDb((sql) => {
+      if (sql.includes("SELECT version FROM expenses")) return statement({ first: null });
+      return statement();
+    });
+    const repo = new D1ExpenseMeRepository({ EXPENSE_ME_DB: db } as unknown as CloudflareEnv);
+
+    await expect(repo.upsertExpense(context(), seedExpenses[0], { expectedVersion: 2 })).rejects.toBeInstanceOf(
+      VersionConflictError
+    );
+    expect(db.prepare).not.toHaveBeenCalledWith(expect.stringContaining("INSERT OR IGNORE INTO expenses"));
+  });
+
+  it("rejects concurrent expense updates when the guarded write applies no rows", async () => {
+    const db = createDb((sql) => {
+      if (sql.includes("SELECT version FROM expenses")) return statement({ first: { version: 2 } });
+      if (sql.includes("UPDATE expenses")) return statement({ run: { success: true, meta: { changes: 0 } } });
+      return statement();
+    });
+    const repo = new D1ExpenseMeRepository({ EXPENSE_ME_DB: db } as unknown as CloudflareEnv);
+
+    await expect(repo.upsertExpense(context(), seedExpenses[0], { expectedVersion: 2 })).rejects.toBeInstanceOf(
+      VersionConflictError
+    );
   });
 
   it("deletes expenses inside the workspace and returns a refreshed snapshot", async () => {
     let deleteBindValues: unknown[] = [];
     const db = createDb((sql) => {
+      if (sql.includes("SELECT version FROM expenses")) return statement({ first: { version: 4 } });
       if (sql.includes("DELETE FROM expenses")) {
         return statement({
           onBind: (...values) => {
@@ -149,9 +220,9 @@ describe("D1 Expense Me repository", () => {
     });
     const repo = new D1ExpenseMeRepository({ EXPENSE_ME_DB: db } as unknown as CloudflareEnv);
 
-    const result = await repo.deleteExpense(context(), "expense-1");
+    const result = await repo.deleteExpense(context(), "expense-1", { expectedVersion: 4 });
 
-    expect(deleteBindValues).toEqual(["workspace-personal", "expense-1"]);
+    expect(deleteBindValues).toEqual(["workspace-personal", "expense-1", 4]);
     expect(result.snapshot.workspaceId).toBe("workspace-personal");
     expect(db.prepare).toHaveBeenCalledWith(expect.stringContaining("DELETE FROM expenses"));
   });
@@ -159,7 +230,7 @@ describe("D1 Expense Me repository", () => {
   it("upserts expense folders and returns a refreshed snapshot", async () => {
     let payloadJson = "";
     const db = createDb((sql) => {
-      if (sql.includes("INSERT INTO expense_folders")) {
+      if (sql.includes("INSERT OR IGNORE INTO expense_folders")) {
         return statement({
           onBind: (_id, _workspaceId, payload) => {
             payloadJson = String(payload);
@@ -175,12 +246,14 @@ describe("D1 Expense Me repository", () => {
 
     expect(JSON.parse(payloadJson)).toMatchObject({ id: seedReports[0].id, name: seedReports[0].name });
     expect(result.snapshot.reports.some((report) => report.id === seedReports[0].id)).toBe(true);
-    expect(db.prepare).toHaveBeenCalledWith(expect.stringContaining("INSERT INTO expense_folders"));
+    expect(db.prepare).toHaveBeenCalledWith(expect.stringContaining("INSERT OR IGNORE INTO expense_folders"));
   });
 
   it("deletes expense folders inside the workspace and returns a refreshed snapshot", async () => {
     let deleteBindValues: unknown[] = [];
     const db = createDb((sql) => {
+      if (sql.includes("SELECT COUNT(*) AS count")) return statement({ first: { count: 0 } });
+      if (sql.includes("SELECT version FROM expense_folders")) return statement({ first: { version: 3 } });
       if (sql.includes("DELETE FROM expense_folders")) {
         return statement({
           onBind: (...values) => {
@@ -192,17 +265,30 @@ describe("D1 Expense Me repository", () => {
     });
     const repo = new D1ExpenseMeRepository({ EXPENSE_ME_DB: db } as unknown as CloudflareEnv);
 
-    const result = await repo.deleteExpenseFolder(context(), "report-1");
+    const result = await repo.deleteExpenseFolder(context(), "report-1", { expectedVersion: 3 });
 
-    expect(deleteBindValues).toEqual(["workspace-personal", "report-1"]);
+    expect(deleteBindValues).toEqual(["workspace-personal", "report-1", 3]);
     expect(result.snapshot.workspaceId).toBe("workspace-personal");
     expect(db.prepare).toHaveBeenCalledWith(expect.stringContaining("DELETE FROM expense_folders"));
+  });
+
+  it("rejects deleting non-empty expense folders", async () => {
+    const db = createDb((sql) => {
+      if (sql.includes("SELECT COUNT(*) AS count")) return statement({ first: { count: 1 } });
+      return statement();
+    });
+    const repo = new D1ExpenseMeRepository({ EXPENSE_ME_DB: db } as unknown as CloudflareEnv);
+
+    await expect(repo.deleteExpenseFolder(context(), "report-with-expenses", { expectedVersion: 1 })).rejects.toBeInstanceOf(
+      NonEmptyExpenseFolderError
+    );
+    expect(db.prepare).not.toHaveBeenCalledWith(expect.stringContaining("DELETE FROM expense_folders"));
   });
 
   it("upserts statement charges without refreshing the snapshot", async () => {
     let payloadJson = "";
     const db = createDb((sql) => {
-      if (sql.includes("INSERT INTO statement_charges")) {
+      if (sql.includes("INSERT OR IGNORE INTO statement_charges")) {
         return statement({
           onBind: (_id, _workspaceId, payload) => {
             payloadJson = String(payload);
@@ -219,8 +305,8 @@ describe("D1 Expense Me repository", () => {
       id: seedStatementCharges[0].id,
       matchStatus: seedStatementCharges[0].matchStatus
     });
-    expect(db.prepare).toHaveBeenCalledTimes(1);
-    expect(db.prepare).toHaveBeenCalledWith(expect.stringContaining("INSERT INTO statement_charges"));
+    expect(db.prepare).toHaveBeenCalledTimes(2);
+    expect(db.prepare).toHaveBeenCalledWith(expect.stringContaining("INSERT OR IGNORE INTO statement_charges"));
   });
 });
 

@@ -25,8 +25,17 @@ export interface WorkspaceContext {
   workspaceId: string;
 }
 
+export interface CloudRecordVersions {
+  expenses: Record<string, number>;
+  reports: Record<string, number>;
+  receiptArtifacts: Record<string, number>;
+  statementCharges: Record<string, number>;
+  exportPackages: Record<string, number>;
+}
+
 export interface CloudSnapshot extends AppSnapshot {
   exportPackages: ExportPackage[];
+  recordVersions: CloudRecordVersions;
   workspaceId: string;
   userEmail: string;
 }

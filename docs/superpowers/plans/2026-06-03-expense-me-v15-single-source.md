@@ -6,6 +6,8 @@
 
 **Architecture:** Keep the existing React/Vite UI and product flows, but move durable app data behind Cloudflare Access, Cloudflare Pages Functions, D1, and R2. The browser loads a cloud snapshot, sends mutations through API repository functions, stores only transient UI state locally, and migrates the old V1 localStorage snapshot only after explicit user action.
 
+**Concurrency Contract:** Cloud snapshots include cloud-only `recordVersions` maps keyed by entity id. Existing-record mutation requests must send the expected version from the last loaded snapshot; D1 writes reject stale versions with `VersionConflictError`. This metadata must not be added to the domain `Expense`, `Report`, `ReceiptArtifact`, or `StatementCharge` types.
+
 **Tech Stack:** React 19, TypeScript, Vite, Vitest, Cloudflare Pages Functions, Cloudflare Access, D1, R2, Wrangler, jose, JSZip, pdf-lib.
 
 ---
@@ -433,8 +435,17 @@ export interface WorkspaceContext {
   workspaceId: string;
 }
 
+export interface CloudRecordVersions {
+  expenses: Record<string, number>;
+  reports: Record<string, number>;
+  receiptArtifacts: Record<string, number>;
+  statementCharges: Record<string, number>;
+  exportPackages: Record<string, number>;
+}
+
 export interface CloudSnapshot extends AppSnapshot {
   exportPackages: ExportPackage[];
+  recordVersions: CloudRecordVersions;
   workspaceId: string;
   userEmail: string;
 }
@@ -736,6 +747,8 @@ git commit -m "feat: add cloudflare access auth"
 
 Create `src/cloudflare/d1Repository.ts` with these exports:
 
+The checked-in implementation should use the safer versioned-write variant of this skeleton: `getSnapshot` selects D1 row versions and fills `CloudSnapshot.recordVersions`; existing-row update/delete methods accept optional `WriteOptions` and require the caller's `expectedVersion` unless the caller is an explicitly trusted internal force write; guarded writes must throw `VersionConflictError` on stale versions. `deleteExpenseFolder` must reject folders that still have assigned Expenses before deleting so D1 cannot orphan Expenses.
+
 ```ts
 import type { Expense, ExportPackage, ReceiptArtifact, Report, StatementCharge } from "../domain/types";
 import { normalizeCloudSnapshot } from "./appSnapshot";
@@ -977,14 +990,18 @@ export async function handleApiRequest(request: Request, env: CloudflareEnv, dep
     }
 
     if (request.method === "POST" && url.pathname === "/api/expenses") {
-      const body = await readJson<{ expense: import("../domain/types").Expense }>(request);
-      const result = await repository.upsertExpense(context, body.expense);
+      const body = await readJson<{ expense: import("../domain/types").Expense; expectedVersion?: number }>(request);
+      const result = await repository.upsertExpense(context, body.expense, { expectedVersion: body.expectedVersion });
       return jsonResponse(result);
     }
 
     const expenseDelete = url.pathname.match(/^\/api\/expenses\/([^/]+)$/);
     if (request.method === "DELETE" && expenseDelete) {
-      const result = await repository.deleteExpense(context, decodeURIComponent(expenseDelete[1]));
+      const expectedVersionParam = url.searchParams.get("expectedVersion");
+      const expectedVersion = expectedVersionParam ? Number(expectedVersionParam) : undefined;
+      const result = await repository.deleteExpense(context, decodeURIComponent(expenseDelete[1]), {
+        expectedVersion: Number.isFinite(expectedVersion) ? expectedVersion : undefined
+      });
       return jsonResponse(result);
     }
 
@@ -1207,28 +1224,30 @@ export class CloudRepository {
     });
   }
 
-  async saveExpense(expense: Expense, artifacts: ReceiptArtifact[] = []) {
+  async saveExpense(expense: Expense, artifacts: ReceiptArtifact[] = [], expectedVersion?: number) {
     return this.snapshotFromMutation("/api/expenses", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ expense, artifacts })
+      body: JSON.stringify({ expense, artifacts, expectedVersion })
     });
   }
 
-  async deleteExpense(expenseId: string) {
-    return this.snapshotFromMutation(`/api/expenses/${encodeURIComponent(expenseId)}`, { method: "DELETE" });
+  async deleteExpense(expenseId: string, expectedVersion?: number) {
+    const query = expectedVersion === undefined ? "" : `?expectedVersion=${encodeURIComponent(String(expectedVersion))}`;
+    return this.snapshotFromMutation(`/api/expenses/${encodeURIComponent(expenseId)}${query}`, { method: "DELETE" });
   }
 
-  async saveExpenseFolder(report: Report) {
+  async saveExpenseFolder(report: Report, expectedVersion?: number) {
     return this.snapshotFromMutation("/api/expense-folders", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ report })
+      body: JSON.stringify({ report, expectedVersion })
     });
   }
 
-  async deleteExpenseFolder(reportId: string) {
-    return this.snapshotFromMutation(`/api/expense-folders/${encodeURIComponent(reportId)}`, { method: "DELETE" });
+  async deleteExpenseFolder(reportId: string, expectedVersion?: number) {
+    const query = expectedVersion === undefined ? "" : `?expectedVersion=${encodeURIComponent(String(expectedVersion))}`;
+    return this.snapshotFromMutation(`/api/expense-folders/${encodeURIComponent(reportId)}${query}`, { method: "DELETE" });
   }
 
   async importStatementCharges(charges: StatementCharge[]) {
@@ -1320,7 +1339,14 @@ function emptySnapshot(): CloudSnapshot {
     receiptArtifacts: [],
     reports: syncReportsWithExpenses(reports, []),
     statementCharges: [],
-    exportPackages: []
+    exportPackages: [],
+    recordVersions: {
+      expenses: {},
+      reports: {},
+      receiptArtifacts: {},
+      statementCharges: {},
+      exportPackages: {}
+    }
   };
 }
 
@@ -1364,10 +1390,14 @@ export function useExpenseMeCloudState(repository = new CloudRepository()): Clou
       markMigrationComplete();
       setLocalSnapshotForMigration(undefined);
     },
-    saveExpense: async (expense, artifacts = []) => setSnapshot(await repository.saveExpense(expense, artifacts)),
-    deleteExpense: async (expenseId) => setSnapshot(await repository.deleteExpense(expenseId)),
-    saveExpenseFolder: async (report) => setSnapshot(await repository.saveExpenseFolder(report)),
-    deleteExpenseFolder: async (reportId) => setSnapshot(await repository.deleteExpenseFolder(reportId)),
+    saveExpense: async (expense, artifacts = []) =>
+      setSnapshot(await repository.saveExpense(expense, artifacts, snapshot.recordVersions.expenses[expense.id])),
+    deleteExpense: async (expenseId) =>
+      setSnapshot(await repository.deleteExpense(expenseId, snapshot.recordVersions.expenses[expenseId])),
+    saveExpenseFolder: async (report) =>
+      setSnapshot(await repository.saveExpenseFolder(report, snapshot.recordVersions.reports[report.id])),
+    deleteExpenseFolder: async (reportId) =>
+      setSnapshot(await repository.deleteExpenseFolder(reportId, snapshot.recordVersions.reports[reportId])),
     importStatementCharges: async (charges) => {
       const nextSnapshot = await repository.importStatementCharges(charges);
       setSnapshot(nextSnapshot);

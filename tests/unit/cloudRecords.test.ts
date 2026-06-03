@@ -34,6 +34,13 @@ describe("cloud record codecs", () => {
     const snapshot = normalizeCloudSnapshot({ workspaceId: "workspace-1", userEmail: "user@example.com" });
 
     expect(snapshot.reports[0].name).toBe("Current Expense Folder");
+    expect(snapshot.recordVersions).toEqual({
+      expenses: {},
+      reports: {},
+      receiptArtifacts: {},
+      statementCharges: {},
+      exportPackages: {}
+    });
   });
 
   it("increments missing and existing versions predictably", () => {
