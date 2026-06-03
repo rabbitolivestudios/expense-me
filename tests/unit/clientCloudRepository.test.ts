@@ -138,6 +138,49 @@ describe("client CloudRepository", () => {
     expect(requestBody(init)).toEqual({ charges: [seedStatementCharges[0]] });
   });
 
+  it("importStatementCharges includes the target Expense Folder when provided", async () => {
+    const fetcher = mutationFetcher();
+    const repository = new CloudRepository(fetcher);
+
+    await expect(repository.importStatementCharges([seedStatementCharges[0]], "report-active")).resolves.toEqual(snapshot);
+
+    const [, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(requestBody(init)).toEqual({ charges: [seedStatementCharges[0]], reportId: "report-active" });
+  });
+
+  it("createExportPackage returns the cloud Export Package download contract", async () => {
+    const result = {
+      exportPackage: {
+        id: "export-package-1",
+        reportId: seedReports[0].id,
+        generatedAt: "2026-06-03T18:00:00.000Z",
+        reviewPdfName: "review.txt",
+        spreadsheetName: "entry.csv",
+        receiptsZipName: "receipts.zip",
+        declarationPdfNames: [],
+        reconciliationNotesName: "reconciliation.txt"
+      },
+      downloadUrl: "/api/export-packages/export-package-1/download"
+    };
+    const fetcher = vi.fn().mockResolvedValue(jsonResponse(result));
+    const repository = new CloudRepository(fetcher);
+
+    await expect(repository.createExportPackage(seedReports[0].id, {
+      employeeName: "Thiago Oliveira",
+      reportReference: "EXP-1"
+    })).resolves.toEqual(result);
+
+    const [url, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/export-packages");
+    expect(init.method).toBe("POST");
+    expect(init.headers).toEqual({ "Content-Type": "application/json" });
+    expect(requestBody(init)).toEqual({
+      reportId: seedReports[0].id,
+      employeeName: "Thiago Oliveira",
+      reportReference: "EXP-1"
+    });
+  });
+
   it("syncEmail calls the POST email sync route", async () => {
     const fetcher = mutationFetcher();
     const repository = new CloudRepository(fetcher);
@@ -145,5 +188,18 @@ describe("client CloudRepository", () => {
     await expect(repository.syncEmail()).resolves.toEqual(snapshot);
 
     expect(fetcher).toHaveBeenCalledWith("/api/email/sync", { method: "POST" });
+  });
+
+  it("syncEmail includes the target Expense Folder when provided", async () => {
+    const fetcher = mutationFetcher();
+    const repository = new CloudRepository(fetcher);
+
+    await expect(repository.syncEmail("report-active")).resolves.toEqual(snapshot);
+
+    const [url, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/email/sync");
+    expect(init.method).toBe("POST");
+    expect(init.headers).toEqual({ "Content-Type": "application/json" });
+    expect(requestBody(init)).toEqual({ reportId: "report-active" });
   });
 });

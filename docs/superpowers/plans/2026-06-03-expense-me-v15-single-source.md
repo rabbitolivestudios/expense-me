@@ -40,6 +40,14 @@ The branch forked from V1 at `da1ad27`. Production V1 hotfix commit `b6be02e fix
 - localStorage malformed-state recovery used by V1 fallback behavior;
 - inbox UI fixes and expanded tests.
 
+Continuation update:
+
+- Task 6A is complete: `origin/main` V1 hotfix commit `b6be02e` was merged into `v15-single-source` and verified.
+- Task 7 is complete: `src/client/cloudRepository.ts` and client wrapper tests were added in `c8a3027 feat: add cloud client repository`.
+- Task 9 backend/API work is implemented for Expenses with artifacts, Expense Folder routes, receipt upload, and statement import with reconciliation. Frontend cloud-state wiring is still pending in Task 8.
+- Task 10 backend/API work is implemented for server-side AgentMail sync through `POST /api/email/sync`, including server-side credentials, idempotent imports, R2-backed email body artifacts, and `sync_runs`. V1.5 frontend still needs to call `CloudRepository.syncEmail()` after Task 8.
+- Task 11 backend route support is partially implemented: `POST /api/export-packages` creates a cloud Export Package and returns `{ exportPackage, downloadUrl }`, and the authenticated download route returns the R2 ZIP. `ExportScreen` still needs to call the cloud export path after Task 8.
+
 ## Target Files
 
 Create:

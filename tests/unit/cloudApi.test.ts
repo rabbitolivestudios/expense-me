@@ -1,8 +1,8 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { handleApiRequest } from "../../src/cloudflare/apiRouter";
 import { VersionConflictError } from "../../src/cloudflare/d1Repository";
 import type { CloudSnapshot, CloudflareEnv, WorkspaceContext } from "../../src/cloudflare/types";
-import { seedExpenses } from "../fixtures";
+import { seedExpenses, seedReports, seedStatementCharges } from "../fixtures";
 
 const env = {
   ENVIRONMENT: "local",
@@ -36,7 +36,41 @@ function repositoryStub() {
     getOrCreateWorkspace: vi.fn().mockResolvedValue(context),
     getSnapshot: vi.fn().mockResolvedValue(snapshot),
     upsertExpense: vi.fn().mockResolvedValue({ snapshot }),
-    deleteExpense: vi.fn().mockResolvedValue({ snapshot })
+    deleteExpense: vi.fn().mockResolvedValue({ snapshot }),
+    upsertExpenseFolder: vi.fn().mockResolvedValue({ snapshot }),
+    deleteExpenseFolder: vi.fn().mockResolvedValue({ snapshot }),
+    upsertReceiptArtifact: vi.fn().mockResolvedValue({ snapshot }),
+    importStatementCharges: vi.fn().mockResolvedValue({ snapshot }),
+    createExportPackage: vi.fn().mockResolvedValue({
+      exportPackage: {
+        id: "export-package-1",
+        reportId: "report-1",
+        generatedAt: "2026-06-03T18:00:00.000Z",
+        reviewPdfName: "review.txt",
+        spreadsheetName: "entry.csv",
+        receiptsZipName: "receipts.zip",
+        declarationPdfNames: [],
+        reconciliationNotesName: "reconciliation.txt"
+      },
+      objectKey: "workspace-personal/export-packages/export-package-1.zip"
+    }),
+    getExportPackageDownload: vi.fn().mockResolvedValue({
+      exportPackage: {
+        id: "export-package-1",
+        reportId: "report-1",
+        generatedAt: "2026-06-03T18:00:00.000Z",
+        reviewPdfName: "review.txt",
+        spreadsheetName: "entry.csv",
+        receiptsZipName: "receipts.zip",
+        declarationPdfNames: [],
+        reconciliationNotesName: "reconciliation.txt"
+      },
+      object: {
+        httpMetadata: { contentType: "application/zip" },
+        arrayBuffer: async () => new Uint8Array([80, 75]).buffer
+      }
+    }),
+    recordSyncRun: vi.fn().mockResolvedValue(undefined)
   };
 }
 
@@ -46,11 +80,23 @@ function localRequest(path: string, init: RequestInit = {}) {
   return new Request(`http://localhost${path}`, { ...init, headers });
 }
 
+function mockJsonResponse(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" }
+  });
+}
+
 async function jsonBody(response: Response) {
   return (await response.json()) as unknown;
 }
 
 describe("cloud API router", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
   it("returns 401 for unauthenticated bootstrap requests", async () => {
     const response = await handleApiRequest(new Request("https://expense.mac-tbo.com/api/bootstrap"), env);
 
@@ -102,6 +148,25 @@ describe("cloud API router", () => {
     expect(repository.upsertExpense).toHaveBeenCalledWith(context, seedExpenses[0], { expectedVersion: 3 });
   });
 
+  it("stores receipt artifacts before saving an expense", async () => {
+    const repository = repositoryStub();
+    const body = { expense: seedExpenses[0], artifacts: [{ id: "artifact-1", mimeType: "text/plain" }], expectedVersion: 3 };
+
+    const response = await handleApiRequest(
+      localRequest("/api/expenses", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      }),
+      env,
+      { repository: repository as never }
+    );
+
+    expect(response.status).toBe(200);
+    expect(repository.upsertReceiptArtifact).toHaveBeenCalledWith(context, body.artifacts[0], {});
+    expect(repository.upsertExpense).toHaveBeenCalledWith(context, seedExpenses[0], { expectedVersion: 3 });
+  });
+
   it("decodes expense IDs and passes expectedVersion to expense deletes", async () => {
     const repository = repositoryStub();
 
@@ -114,6 +179,180 @@ describe("cloud API router", () => {
     expect(response.status).toBe(200);
     await expect(jsonBody(response)).resolves.toEqual({ snapshot });
     expect(repository.deleteExpense).toHaveBeenCalledWith(context, "expense/with space", { expectedVersion: 7 });
+  });
+
+  it("saves and deletes Expense Folders through product-term routes", async () => {
+    const repository = repositoryStub();
+
+    const saveResponse = await handleApiRequest(
+      localRequest("/api/expense-folders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ report: seedReports[0], expectedVersion: 2 })
+      }),
+      env,
+      { repository: repository as never }
+    );
+    const deleteResponse = await handleApiRequest(
+      localRequest("/api/expense-folders/report%2F1?expectedVersion=2", { method: "DELETE" }),
+      env,
+      { repository: repository as never }
+    );
+
+    expect(saveResponse.status).toBe(200);
+    expect(deleteResponse.status).toBe(200);
+    expect(repository.upsertExpenseFolder).toHaveBeenCalledWith(
+      context,
+      seedReports[0],
+      { expectedVersion: 2 }
+    );
+    expect(repository.deleteExpenseFolder).toHaveBeenCalledWith(context, "report/1", { expectedVersion: 2 });
+  });
+
+  it("imports statement charges through the cloud route", async () => {
+    const repository = repositoryStub();
+
+    const response = await handleApiRequest(
+      localRequest("/api/statements/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ charges: [seedStatementCharges[0]], reportId: "report-active" })
+      }),
+      env,
+      { repository: repository as never }
+    );
+
+    expect(response.status).toBe(200);
+    expect(repository.importStatementCharges).toHaveBeenCalledWith(
+      context,
+      [seedStatementCharges[0]],
+      { expectedVersions: undefined, targetReportId: "report-active" }
+    );
+  });
+
+  it("creates an Export Package and returns its download URL", async () => {
+    const repository = repositoryStub();
+
+    const response = await handleApiRequest(
+      localRequest("/api/export-packages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reportId: "report-1", employeeName: "Thiago Oliveira", reportReference: "EXP-1" })
+      }),
+      env,
+      { repository: repository as never }
+    );
+
+    expect(response.status).toBe(200);
+    await expect(jsonBody(response)).resolves.toEqual({
+      exportPackage: expect.objectContaining({ id: "export-package-1", reportId: "report-1" }),
+      downloadUrl: "/api/export-packages/export-package-1/download"
+    });
+    expect(repository.createExportPackage).toHaveBeenCalledWith(context, {
+      reportId: "report-1",
+      employeeName: "Thiago Oliveira",
+      reportReference: "EXP-1"
+    });
+  });
+
+  it("syncs AgentMail server-side and writes imported email expenses", async () => {
+    const repository = repositoryStub();
+    repository.getSnapshot.mockResolvedValue({
+      ...snapshot,
+      expenses: [],
+      receiptArtifacts: [],
+      reports: [{ id: "report-active", name: "Active", expenseIds: [], status: "Draft", dateRangeLabel: "", createdAt: "" }],
+      recordVersions: {
+        expenses: {},
+        reports: {},
+        receiptArtifacts: {},
+        statementCharges: {},
+        exportPackages: {}
+      }
+    });
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(mockJsonResponse({ messages: [{ message_id: "m1", subject: "Uber receipt", timestamp: "2026-06-03T14:00:00.000Z" }] }))
+      .mockResolvedValueOnce(mockJsonResponse({ message_id: "m1", text: "Uber\nJun 3, 2026\nTotal $18.42", timestamp: "2026-06-03T14:00:00.000Z" }));
+    vi.stubGlobal("fetch", fetcher);
+
+    const response = await handleApiRequest(
+      localRequest("/api/email/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reportId: "report-active" })
+      }),
+      { ...env, AGENTMAIL_API_KEY: "test-key", AGENTMAIL_BASE_URL: "https://agentmail.test" },
+      { repository: repository as never }
+    );
+
+    expect(response.status).toBe(200);
+    expect(fetcher).toHaveBeenCalledWith("https://agentmail.test/v0/inboxes/expense-me%40agentmail.to/messages", {
+      headers: { Authorization: "Bearer test-key" }
+    });
+    expect(repository.upsertReceiptArtifact).toHaveBeenCalledWith(
+      context,
+      expect.objectContaining({ id: "art-email-m1", sourceMessageId: "m1" }),
+      {}
+    );
+    expect(repository.upsertExpense).toHaveBeenCalledWith(
+      context,
+      expect.objectContaining({ id: "exp-email-m1", reportId: "report-active", sourceType: "Email" }),
+      {}
+    );
+    expect(repository.recordSyncRun).toHaveBeenCalledWith(
+      context,
+      expect.objectContaining({ source: "AgentMail", attemptedCount: 1, importedCount: 1, repairedCount: 0, skippedCount: 0 })
+    );
+  });
+
+  it("does not duplicate an AgentMail message that already has an Expense", async () => {
+    const repository = repositoryStub();
+    repository.getSnapshot.mockResolvedValue({
+      ...snapshot,
+      expenses: [{ ...seedExpenses[0], id: "exp-email-m1", sourceType: "Email" }],
+      receiptArtifacts: [],
+      reports: [{ id: "report-active", name: "Active", expenseIds: ["exp-email-m1"], status: "Draft", dateRangeLabel: "", createdAt: "" }],
+      recordVersions: {
+        expenses: { "exp-email-m1": 2 },
+        reports: {},
+        receiptArtifacts: {},
+        statementCharges: {},
+        exportPackages: {}
+      }
+    });
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(mockJsonResponse({ messages: [{ message_id: "m1", subject: "Uber receipt", timestamp: "2026-06-03T14:00:00.000Z" }] }))
+      .mockResolvedValueOnce(mockJsonResponse({ message_id: "m1", text: "Uber\nJun 3, 2026\nTotal $18.42", timestamp: "2026-06-03T14:00:00.000Z" }));
+    vi.stubGlobal("fetch", fetcher);
+
+    const response = await handleApiRequest(
+      localRequest("/api/email/sync", { method: "POST" }),
+      { ...env, AGENTMAIL_API_KEY: "test-key", AGENTMAIL_BASE_URL: "https://agentmail.test" },
+      { repository: repository as never }
+    );
+
+    expect(response.status).toBe(200);
+    expect(repository.upsertReceiptArtifact).not.toHaveBeenCalled();
+    expect(repository.upsertExpense).not.toHaveBeenCalled();
+    expect(repository.recordSyncRun).toHaveBeenCalledWith(
+      context,
+      expect.objectContaining({ source: "AgentMail", attemptedCount: 1, importedCount: 0, repairedCount: 0, skippedCount: 1 })
+    );
+  });
+
+  it("returns stable public text when server-side AgentMail sync fails", async () => {
+    const repository = repositoryStub();
+    const fetcher = vi.fn().mockResolvedValue(mockJsonResponse({ error: "upstream failed" }, 503));
+    vi.stubGlobal("fetch", fetcher);
+
+    const response = await handleApiRequest(
+      localRequest("/api/email/sync", { method: "POST" }),
+      { ...env, AGENTMAIL_API_KEY: "test-key", AGENTMAIL_BASE_URL: "https://agentmail.test" },
+      { repository: repository as never }
+    );
+
+    expect(response.status).toBe(502);
+    await expect(jsonBody(response)).resolves.toEqual({ error: "Email sync failed." });
   });
 
   it("maps version conflicts to 409 with the public message", async () => {

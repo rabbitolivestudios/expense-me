@@ -51,11 +51,15 @@ export function artifactObjectKey(context: WorkspaceContext, artifact: ReceiptAr
   return `${context.workspaceId}/artifacts/${artifact.id}`;
 }
 
+function uniqueArtifactObjectKey(context: WorkspaceContext, artifact: ReceiptArtifact) {
+  return `${artifactObjectKey(context, artifact)}/${crypto.randomUUID()}`;
+}
+
 export async function storeArtifactData(env: CloudflareEnv, context: WorkspaceContext, artifact: ReceiptArtifact) {
   if (!artifact.dataUrl) return artifact.storageKey;
 
   const { bytes, mimeType } = dataUrlToBytes(artifact.dataUrl);
-  const key = artifactObjectKey(context, artifact);
+  const key = uniqueArtifactObjectKey(context, artifact);
   await env.EXPENSE_ME_ARTIFACTS.put(key, bytes, {
     httpMetadata: { contentType: artifact.mimeType || mimeType }
   });

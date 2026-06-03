@@ -1,5 +1,10 @@
 import type { ApiSnapshotBody, CloudSnapshot } from "../cloudflare/types";
-import type { AppSnapshot, Expense, ReceiptArtifact, Report, StatementCharge } from "../domain/types";
+import type { AppSnapshot, Expense, ExportPackage, ReceiptArtifact, Report, StatementCharge } from "../domain/types";
+
+export interface CloudExportPackageResult {
+  exportPackage: ExportPackage;
+  downloadUrl: string;
+}
 
 async function readApiJson<T>(response: Response): Promise<T> {
   if (!response.ok) {
@@ -62,16 +67,35 @@ export class CloudRepository {
     );
   }
 
-  async importStatementCharges(charges: StatementCharge[]): Promise<CloudSnapshot> {
+  async importStatementCharges(charges: StatementCharge[], reportId?: string): Promise<CloudSnapshot> {
     return this.snapshotFromMutation("/api/statements/import", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ charges })
+      body: JSON.stringify({ charges, reportId })
     });
   }
 
-  async syncEmail(): Promise<CloudSnapshot> {
-    return this.snapshotFromMutation("/api/email/sync", { method: "POST" });
+  async createExportPackage(
+    reportId: string,
+    options: { employeeName?: string; reportReference?: string } = {}
+  ): Promise<CloudExportPackageResult> {
+    return readApiJson<CloudExportPackageResult>(await this.fetcher("/api/export-packages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reportId, ...options })
+    }));
+  }
+
+  async syncEmail(reportId?: string): Promise<CloudSnapshot> {
+    if (!reportId) {
+      return this.snapshotFromMutation("/api/email/sync", { method: "POST" });
+    }
+
+    return this.snapshotFromMutation("/api/email/sync", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reportId })
+    });
   }
 
   private async snapshotFromMutation(input: string, init: RequestInit): Promise<CloudSnapshot> {

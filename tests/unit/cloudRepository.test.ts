@@ -105,7 +105,11 @@ describe("D1 Expense Me repository", () => {
       }
       return statement();
     });
-    const repo = new D1ExpenseMeRepository({ EXPENSE_ME_DB: db } as unknown as CloudflareEnv);
+    const put = vi.fn().mockResolvedValue(undefined);
+    const repo = new D1ExpenseMeRepository({
+      EXPENSE_ME_DB: db,
+      EXPENSE_ME_ARTIFACTS: { put }
+    } as unknown as CloudflareEnv);
     const artifact: ReceiptArtifact = {
       ...seedArtifacts[0],
       dataUrl: "data:image/png;base64,SGVsbG8="
@@ -113,9 +117,15 @@ describe("D1 Expense Me repository", () => {
 
     await repo.upsertReceiptArtifact(context(), artifact);
 
-    expect(JSON.parse(payloadJson)).toEqual(expect.objectContaining({ id: artifact.id, storageKey: artifact.storageKey }));
+    expect(JSON.parse(payloadJson)).toEqual(expect.objectContaining({
+      id: artifact.id,
+      storageKey: expect.stringMatching(/^workspace-personal\/artifacts\/art-restaurant-receipt\//)
+    }));
     expect(JSON.parse(payloadJson)).not.toHaveProperty("dataUrl");
-    expect(db.prepare).toHaveBeenCalledTimes(2);
+    expect(put).toHaveBeenCalledWith(expect.stringMatching(/^workspace-personal\/artifacts\/art-restaurant-receipt\//), expect.any(Uint8Array), {
+      httpMetadata: { contentType: "application/pdf" }
+    });
+    expect(db.prepare).toHaveBeenCalledWith(expect.stringContaining("INSERT OR IGNORE INTO receipt_artifacts"));
   });
 
   it("upserts expenses and returns a refreshed snapshot", async () => {
@@ -285,7 +295,7 @@ describe("D1 Expense Me repository", () => {
     expect(db.prepare).not.toHaveBeenCalledWith(expect.stringContaining("DELETE FROM expense_folders"));
   });
 
-  it("upserts statement charges without refreshing the snapshot", async () => {
+  it("upserts statement charges and returns a refreshed snapshot", async () => {
     let payloadJson = "";
     const db = createDb((sql) => {
       if (sql.includes("INSERT OR IGNORE INTO statement_charges")) {
@@ -299,13 +309,13 @@ describe("D1 Expense Me repository", () => {
     });
     const repo = new D1ExpenseMeRepository({ EXPENSE_ME_DB: db } as unknown as CloudflareEnv);
 
-    await expect(repo.upsertStatementCharge(context(), seedStatementCharges[0])).resolves.toBeUndefined();
+    const result = await repo.upsertStatementCharge(context(), seedStatementCharges[0]);
 
     expect(JSON.parse(payloadJson)).toMatchObject({
       id: seedStatementCharges[0].id,
       matchStatus: seedStatementCharges[0].matchStatus
     });
-    expect(db.prepare).toHaveBeenCalledTimes(2);
+    expect(result.snapshot.workspaceId).toBe("workspace-personal");
     expect(db.prepare).toHaveBeenCalledWith(expect.stringContaining("INSERT OR IGNORE INTO statement_charges"));
   });
 
@@ -337,8 +347,8 @@ describe("D1 Expense Me repository", () => {
     };
     vi.spyOn(repo, "upsertExpenseFolder").mockResolvedValue({ snapshot: cloudSnapshot });
     vi.spyOn(repo, "upsertExpense").mockResolvedValue({ snapshot: cloudSnapshot });
-    vi.spyOn(repo, "upsertReceiptArtifact").mockResolvedValue(undefined);
-    vi.spyOn(repo, "upsertStatementCharge").mockResolvedValue(undefined);
+    vi.spyOn(repo, "upsertReceiptArtifact").mockResolvedValue({ snapshot: cloudSnapshot });
+    vi.spyOn(repo, "upsertStatementCharge").mockResolvedValue({ snapshot: cloudSnapshot });
     vi.spyOn(repo, "getSnapshot").mockResolvedValue(cloudSnapshot);
 
     const result = await repo.replaceFromMigration(context(), {
@@ -377,6 +387,7 @@ describe("artifact store", () => {
     const env = { EXPENSE_ME_ARTIFACTS: { put } } as unknown as CloudflareEnv;
     const artifact: ReceiptArtifact = {
       ...seedArtifacts[0],
+      id: "art-uploaded-receipt",
       storageKey: "",
       dataUrl: "data:text/plain;base64,SGVsbG8=",
       mimeType: "text/plain"
@@ -384,7 +395,7 @@ describe("artifact store", () => {
 
     const key = await storeArtifactData(env, context(), artifact);
 
-    expect(key).toBe(artifactObjectKey(context(), artifact));
+    expect(key).toMatch(/^workspace-personal\/artifacts\/art-uploaded-receipt\//);
     expect(put).toHaveBeenCalledWith(key, expect.any(Uint8Array), {
       httpMetadata: { contentType: "text/plain" }
     });
