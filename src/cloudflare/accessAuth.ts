@@ -9,6 +9,8 @@ export interface AccessJwtPayload {
 
 export type AccessJwtVerifier = (jwt: string, env: CloudflareEnv) => Promise<AccessJwtPayload>;
 
+const remoteJwksByIssuer = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
+
 function accessJwtFromRequest(request: Request) {
   return request.headers.get("CF-Access-Jwt-Assertion") || request.headers.get("cf-access-jwt-assertion") || "";
 }
@@ -17,13 +19,32 @@ export function normalizeAccessIssuer(teamDomain: string) {
   return teamDomain.replace(/\/$/, "");
 }
 
+function isLoopbackHostname(hostname: string) {
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1" || hostname === "[::1]";
+}
+
+function isAllowedEmail(email: string, env: CloudflareEnv) {
+  return !env.ACCESS_ALLOWED_EMAIL || email.toLowerCase() === env.ACCESS_ALLOWED_EMAIL.toLowerCase();
+}
+
+function remoteJwksForIssuer(issuer: string) {
+  const existing = remoteJwksByIssuer.get(issuer);
+  if (existing) {
+    return existing;
+  }
+
+  const jwks = createRemoteJWKSet(new URL(`${issuer}/cdn-cgi/access/certs`));
+  remoteJwksByIssuer.set(issuer, jwks);
+  return jwks;
+}
+
 export async function verifyAccessJwt(jwt: string, env: CloudflareEnv): Promise<AccessJwtPayload> {
   if (!env.ACCESS_TEAM_DOMAIN || !env.ACCESS_AUD) {
     throw new Error("Cloudflare Access is not configured.");
   }
 
   const issuer = normalizeAccessIssuer(env.ACCESS_TEAM_DOMAIN);
-  const jwks = createRemoteJWKSet(new URL(`${issuer}/cdn-cgi/access/certs`));
+  const jwks = remoteJwksForIssuer(issuer);
   const result = await jwtVerify(jwt, jwks, {
     issuer,
     audience: env.ACCESS_AUD
@@ -38,8 +59,8 @@ export async function requireAccessUser(
   verifier: AccessJwtVerifier = verifyAccessJwt
 ): Promise<AccessUser> {
   if (env.ENVIRONMENT === "local") {
-    const localEmail = request.headers.get("x-expense-me-local-user");
-    if (localEmail) {
+    const localEmail = request.headers.get("x-expense-me-local-user")?.trim();
+    if (localEmail && isLoopbackHostname(new URL(request.url).hostname) && isAllowedEmail(localEmail, env)) {
       return { id: `local:${localEmail}`, email: localEmail };
     }
   }
@@ -49,12 +70,18 @@ export async function requireAccessUser(
     throw new Response("Unauthorized", { status: 401 });
   }
 
-  const payload = await verifier(jwt, env);
+  let payload: AccessJwtPayload;
+  try {
+    payload = await verifier(jwt, env);
+  } catch {
+    throw new Response("Unauthorized", { status: 401 });
+  }
+
   if (!payload.email || !payload.sub) {
     throw new Response("Unauthorized", { status: 401 });
   }
 
-  if (env.ACCESS_ALLOWED_EMAIL && payload.email.toLowerCase() !== env.ACCESS_ALLOWED_EMAIL.toLowerCase()) {
+  if (!isAllowedEmail(payload.email, env)) {
     throw new Response("Forbidden", { status: 403 });
   }
 
