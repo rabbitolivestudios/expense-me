@@ -52,6 +52,10 @@ function extractionLabel(method: ExtractionMethod) {
   }
 }
 
+function emailSyncErrorMessage(_error: unknown) {
+  return "Email sync failed. Try again in a minute.";
+}
+
 async function createExpenseFromFile(file: File, sourceType: IntakeSource) {
   const id = nextId("exp-upload");
   const extraction = await extractReceiptTextFromFile(file);
@@ -226,8 +230,8 @@ export function CaptureSheet({ onClose, onExpenseCreated, onOpenCards, onSyncEma
     try {
       const count = await onSyncEmail();
       setStatusMessage(count === 0 ? "No email receipt updates found." : `${count} email receipt${count === 1 ? "" : "s"} updated in Inbox.`);
-    } catch {
-      setStatusMessage("Email sync needs the local AgentMail server.");
+    } catch (error) {
+      setStatusMessage(emailSyncErrorMessage(error));
     } finally {
       setSyncingEmail(false);
     }

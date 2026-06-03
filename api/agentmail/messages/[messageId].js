@@ -1,15 +1,9 @@
 import { getAgentMailMessage } from "../../../serverless/agentmailClient.js";
-import { isAgentMailRequestAuthorized, rejectUnauthorizedAgentMailRequest } from "../../../serverless/agentmailAuth.js";
 
 export default async function handler(request, response) {
   if (request.method !== "GET") {
     response.setHeader("Allow", "GET");
     response.status(405).json({ error: "Method not allowed" });
-    return;
-  }
-
-  if (!isAgentMailRequestAuthorized(request)) {
-    rejectUnauthorizedAgentMailRequest(response);
     return;
   }
 

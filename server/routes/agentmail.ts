@@ -1,15 +1,9 @@
 import { Router } from "express";
 import { getAgentMailMessage, listAgentMailMessages } from "../agentmailClient";
-import { isAgentMailRequestAuthorized, rejectUnauthorizedAgentMailRequest } from "../agentmailAuth";
 
 export const agentMailRouter = Router();
 
 agentMailRouter.get("/messages", async (request, response) => {
-  if (!isAgentMailRequestAuthorized(request)) {
-    rejectUnauthorizedAgentMailRequest(response);
-    return;
-  }
-
   const messageId = typeof request.query.messageId === "string" ? request.query.messageId : undefined;
 
   try {
@@ -21,11 +15,6 @@ agentMailRouter.get("/messages", async (request, response) => {
 });
 
 agentMailRouter.get("/messages/:messageId", async (request, response) => {
-  if (!isAgentMailRequestAuthorized(request)) {
-    rejectUnauthorizedAgentMailRequest(response);
-    return;
-  }
-
   try {
     response.json(await getAgentMailMessage(request.params.messageId));
   } catch (error) {

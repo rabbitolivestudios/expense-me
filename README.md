@@ -62,4 +62,4 @@ npx clawpatch report
 
 ## Deployment
 
-The production app is deployed on Vercel at `expense-me-tbo.vercel.app`. AgentMail credentials are configured as Vercel environment variables and must not be committed to the repository.
+The production app is deployed on Vercel at `expense-me-tbo.vercel.app`. AgentMail credentials are configured as Vercel environment variables and must not be committed to the repository. Shared app data and login should stay on free-tier infrastructure unless the product requirement changes.

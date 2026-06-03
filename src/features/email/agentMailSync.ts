@@ -21,8 +21,6 @@ export interface AgentMailMessageListResponse {
 
 export type AgentMailFetch = (input: string, init?: RequestInit) => Promise<Response>;
 
-const syncTokenStorageKey = "expense-me-agentmail-sync-token";
-
 export function normalizeAgentMailMessages(messages: AgentMailMessageSummary[]) {
   const seen = new Set<string>();
 
@@ -47,52 +45,8 @@ function unwrapAgentMailMessage(body: unknown, messageId: string): AgentMailMess
   return { message_id: messageId, ...(body as Partial<AgentMailMessageSummary>) };
 }
 
-function readSyncToken() {
-  try {
-    return window.localStorage.getItem(syncTokenStorageKey)?.trim() || undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function storeSyncToken(token: string) {
-  try {
-    window.localStorage.setItem(syncTokenStorageKey, token);
-  } catch {
-    // Token persistence is best-effort; the user can re-enter it on the next sync.
-  }
-}
-
-function promptForSyncToken() {
-  if (typeof window.prompt !== "function") return undefined;
-
-  const token = window.prompt("Enter the email sync passcode")?.trim();
-  if (!token) return undefined;
-
-  storeSyncToken(token);
-  return token;
-}
-
-function fetchInitForToken(token: string): RequestInit {
-  return {
-    headers: {
-      Authorization: `Bearer ${token}`
-    }
-  };
-}
-
-async function fetchWithOptionalToken(input: string, fetcher: AgentMailFetch) {
-  const token = readSyncToken();
-  const response = token ? await fetcher(input, fetchInitForToken(token)) : await fetcher(input);
-
-  if (response.status !== 401) return response;
-
-  const promptedToken = promptForSyncToken();
-  return promptedToken ? fetcher(input, fetchInitForToken(promptedToken)) : response;
-}
-
 export async function fetchAgentMailMessage(messageId: string, fetcher: AgentMailFetch = fetch) {
-  const response = await fetchWithOptionalToken(`/api/agentmail/messages?messageId=${encodeURIComponent(messageId)}`, fetcher);
+  const response = await fetcher(`/api/agentmail/messages?messageId=${encodeURIComponent(messageId)}`);
 
   if (!response.ok) {
     throw new Error(`AgentMail message fetch failed: ${response.status}`);
@@ -102,7 +56,7 @@ export async function fetchAgentMailMessage(messageId: string, fetcher: AgentMai
 }
 
 export async function fetchAgentMailMessages(fetcher: AgentMailFetch = fetch) {
-  const response = await fetchWithOptionalToken("/api/agentmail/messages", fetcher);
+  const response = await fetcher("/api/agentmail/messages");
 
   if (!response.ok) {
     throw new Error(`AgentMail sync failed: ${response.status}`);

@@ -70,6 +70,10 @@ function formatMoney(amount: number, currency: string) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency, maximumFractionDigits: 2 }).format(amount);
 }
 
+function emailSyncErrorMessage(_error: unknown) {
+  return "Email sync failed. Try again in a minute.";
+}
+
 interface SwipeState {
   expenseId: string;
   startX: number;
@@ -147,8 +151,8 @@ export function InboxScreen({
     try {
       const count = await onSyncEmail();
       setSyncStatus(count === 0 ? "Email synced. No receipt updates." : `Email synced. ${count} receipt${count === 1 ? "" : "s"} updated.`);
-    } catch {
-      setSyncStatus("Email sync needs the local AgentMail server.");
+    } catch (error) {
+      setSyncStatus(emailSyncErrorMessage(error));
     } finally {
       setSyncing(false);
     }

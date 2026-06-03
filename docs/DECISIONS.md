@@ -54,7 +54,8 @@ Target design:
 - Do not commit `.env`, Vercel local state, build output, screenshots, or generated export packages.
 - OpenAI API usage, if added, should run server-side only so keys are never exposed in the browser.
 - AgentMail route errors should return stable public messages only; raw upstream errors stay server-side.
-- Production AgentMail sync is protected by `AGENTMAIL_SYNC_TOKEN`; the browser prompts for the sync passcode on first email sync and stores it in browser localStorage.
+- Current production AgentMail sync is intentionally single-user/prototype scope. It must move behind a real login-backed access boundary when shared cloud data replaces browser-local storage.
+- Future shared-data infrastructure should use free-tier services where possible; Cloudflare Workers/Pages, D1, R2, KV, and Access are preferred candidates before adding paid services.
 
 ## Review Gate
 
