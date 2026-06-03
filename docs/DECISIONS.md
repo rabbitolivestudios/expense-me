@@ -54,7 +54,7 @@ Target design:
 - Do not commit `.env`, Vercel local state, build output, screenshots, or generated export packages.
 - OpenAI API usage, if added, should run server-side only so keys are never exposed in the browser.
 - AgentMail route errors should return stable public messages only; raw upstream errors stay server-side.
-- Production AgentMail sync still needs an explicit user-auth or sync-passcode decision before the API can be treated as private.
+- Production AgentMail sync is protected by `AGENTMAIL_SYNC_TOKEN`; the browser prompts for the sync passcode on first email sync and stores it in browser localStorage.
 
 ## Review Gate
 

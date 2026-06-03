@@ -30,7 +30,7 @@ Build a mobile-first expense companion that captures work expenses, catches miss
 ## V1 Next Milestones
 
 1. Add image preprocessing before OCR: crop, rotate, contrast, resize, sharpen.
-2. Add an authenticated AgentMail sync boundary for the public PWA, such as a user session or sync passcode that is not bundled into browser code.
+2. Replace the AgentMail sync passcode with a proper user session when the app grows beyond a single-user PWA.
 3. Add optional low-cost LLM extraction behind a server API.
 4. Add confidence warnings for OCR/parsed fields.
 5. Add duplicate receipt detection across OCR text, merchant/date/amount, and card matches.

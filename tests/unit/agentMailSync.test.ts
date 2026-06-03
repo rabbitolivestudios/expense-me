@@ -66,6 +66,36 @@ describe("AgentMail sync", () => {
     expect(fetcher).toHaveBeenCalledWith("/api/agentmail/messages?messageId=msg%201%2F2");
   });
 
+  it("sends the stored AgentMail sync passcode when present", async () => {
+    window.localStorage.setItem("expense-me-agentmail-sync-token", "sync-passcode");
+    const fetcher = vi.fn().mockResolvedValue(jsonResponse({ messages: [] }));
+
+    await expect(fetchAgentMailMessages(fetcher)).resolves.toEqual([]);
+
+    expect(fetcher).toHaveBeenCalledWith("/api/agentmail/messages", {
+      headers: {
+        Authorization: "Bearer sync-passcode"
+      }
+    });
+  });
+
+  it("prompts once and retries when AgentMail sync requires authorization", async () => {
+    const prompt = vi.spyOn(window, "prompt").mockReturnValue("new-passcode");
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ error: "AgentMail sync authorization required" }, 401))
+      .mockResolvedValueOnce(jsonResponse({ messages: [] }));
+
+    await expect(fetchAgentMailMessages(fetcher)).resolves.toEqual([]);
+
+    expect(prompt).toHaveBeenCalledWith("Enter the email sync passcode");
+    expect(fetcher).toHaveBeenLastCalledWith("/api/agentmail/messages", {
+      headers: {
+        Authorization: "Bearer new-passcode"
+      }
+    });
+    expect(window.localStorage.getItem("expense-me-agentmail-sync-token")).toBe("new-passcode");
+  });
+
   it("falls back to list summaries when detail fetch fails", async () => {
     const fetcher = vi.fn()
       .mockResolvedValueOnce(jsonResponse({ messages: [{ message_id: "m1", subject: "Receipt" }] }))
