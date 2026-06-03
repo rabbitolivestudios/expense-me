@@ -21,6 +21,7 @@ The current app has the first V1 implementation of expenses, card reconciliation
 ## Current Capabilities
 
 - Mobile-first inbox, capture, cards, reports, and export screens, with week/year separators for the visible expense list
+- Active Expense Folder selector on Inbox for the default capture/email/statement assignment, plus an Export Package folder selector for choosing what to export
 - Camera/image/PDF/manual intake with browser-local OCR and PDF text extraction
 - AgentMail inbox sync for `expense-me@agentmail.to`, including full message detail parsing, Uber pickup/dropoff descriptions, and repair of older summary-only imports
 - Company-style expense type, sub-expense type, region, and country fields
@@ -47,7 +48,11 @@ Create a local `.env` file from `.env.example` when testing AgentMail sync.
 
 ## Email Sync
 
-On the Inbox screen, tap the `expense-me@agentmail.to` sync strip or the refresh icon in the header. The address is displayed as plain app text; it should not open a mail compose sheet.
+On the Inbox screen, tap the `expense-me@agentmail.to` sync strip or the refresh icon in the header. The address is displayed as plain app text; it should not open a mail compose sheet. New synced email expenses are assigned to the selected Active Expense Folder.
+
+## Local Persistence
+
+V1 stores app state in browser localStorage under `expense-me-v1-live-state`. If a malformed saved payload is recovered by later user changes, the original raw payload is first copied to `expense-me-v1-live-state:recovery`.
 
 ## Validation
 

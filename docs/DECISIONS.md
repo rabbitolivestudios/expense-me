@@ -29,10 +29,11 @@ Every expense should belong to one Expense Folder. The folder assignment should 
 
 Expected UI:
 
+- choose the Active Expense Folder from Inbox so new capture, email sync, and statement-created expenses land in the intended folder by default;
 - assign from Inbox with a swipe-right action;
 - assign or change from the Expense Detail screen with a dropdown;
 - create a new Expense Folder when no suitable folder exists;
-- generate each Export Package from one selected Expense Folder.
+- generate each Export Package from one selected Expense Folder, independent of the current Active Expense Folder.
 
 ## Inbox Chronology
 

@@ -11,6 +11,18 @@
   gap: 16px;
 }
 
+.persistence-alert {
+  margin: 12px 16px 0;
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 59, 48, 0.28);
+  border-radius: var(--radius-card);
+  background: rgba(255, 59, 48, 0.1);
+  color: var(--st-declare);
+  font-size: 0.84rem;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
 /* ---------- Gradient hero header (full-bleed) ----------
    The screen padding lives here so each screen's <header> can
    bleed edge-to-edge under the status bar with the brand gradient. */

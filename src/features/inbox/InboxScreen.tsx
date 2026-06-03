@@ -13,7 +13,7 @@ import {
   Trash2,
   X
 } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Expense, Report } from "../../domain/types";
 import { ReadyRing } from "../../components/ReadyRing";
 import type { ThemeMode } from "../shell/useTheme";
@@ -22,6 +22,8 @@ import "./inbox.css";
 interface InboxScreenProps {
   expenses: Expense[];
   reports: Report[];
+  activeReportId: string;
+  onActiveReportChange: (reportId: string) => void;
   onOpenExpense: (expenseId: string) => void;
   onDeleteExpense: (expenseId: string) => void;
   onAssignExpenseFolder: (expenseId: string, reportId: string) => void;
@@ -58,8 +60,18 @@ function folderNameForExpense(expense: Expense, reports: Report[]) {
   return reports.find((report) => report.id === expense.reportId)?.name ?? "No Expense Folder";
 }
 
+function finalUsdValue(expense: Expense) {
+  if (typeof expense.finalUsdAmount === "number") return expense.finalUsdAmount;
+  if (expense.originalCurrency === "USD") return expense.originalAmount;
+  if (typeof expense.fxRate === "number" && expense.fxRate > 0) {
+    return expense.originalAmount * expense.fxRate + (expense.foreignTransactionFee ?? 0);
+  }
+
+  return undefined;
+}
+
 function usdValue(expense: Expense) {
-  return expense.finalUsdAmount ?? expense.originalAmount ?? 0;
+  return finalUsdValue(expense) ?? 0;
 }
 
 function formatUsd(amount: number) {
@@ -130,12 +142,12 @@ function dateGroupForExpense(expense: Expense) {
   }
 
   const weekStart = startOfWeek(date);
-  const year = String(date.getUTCFullYear());
+  const weekKey = weekStart.toISOString().slice(0, 10);
 
   return {
-    key: `${year}-${weekStart.toISOString().slice(0, 10)}`,
+    key: weekKey,
     label: `Week of ${weekFormatter.format(weekStart)}`,
-    year
+    year: String(weekStart.getUTCFullYear())
   };
 }
 
@@ -159,6 +171,8 @@ function expenseDateRows(expenses: Expense[]) {
 export function InboxScreen({
   expenses,
   reports,
+  activeReportId,
+  onActiveReportChange,
   onOpenExpense,
   onDeleteExpense,
   onAssignExpenseFolder,
@@ -179,7 +193,9 @@ export function InboxScreen({
   const [confirmingExpenseId, setConfirmingExpenseId] = useState<string | null>(null);
   const [assigningExpenseId, setAssigningExpenseId] = useState<string | null>(null);
   const [assignDraftReportId, setAssignDraftReportId] = useState("");
+  const [createdDraftReport, setCreatedDraftReport] = useState<Report | null>(null);
   const [newFolderName, setNewFolderName] = useState("");
+  const [folderCreateError, setFolderCreateError] = useState("");
   const [actionMenuExpenseId, setActionMenuExpenseId] = useState<string | null>(null);
   const [renamingExpenseId, setRenamingExpenseId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
@@ -191,11 +207,35 @@ export function InboxScreen({
   const ready = expenses.filter((expense) => expense.status === "Ready");
 
   // Active Expense Folder (Export's default) drives the hero ring + readiness band.
-  const activeFolder = reports[0];
+  const activeFolder = reports.find((report) => report.id === activeReportId) ?? reports[0];
   const folderExpenses = activeFolder ? expenses.filter((expense) => expense.reportId === activeFolder.id) : [];
   const folderReady = folderExpenses.filter((expense) => expense.status === "Ready").length;
-  const folderTotal = folderExpenses.reduce((sum, expense) => sum + usdValue(expense), 0);
+  const folderUsdValues = folderExpenses.map(finalUsdValue);
+  const folderHasKnownTotal = folderUsdValues.some((amount) => amount !== undefined);
+  const folderHasPendingFx = folderUsdValues.some((amount) => amount === undefined);
+  const folderTotal = folderUsdValues.reduce<number>((sum, amount) => sum + (amount ?? 0), 0);
+  const folderTotalText = folderExpenses.length === 0 || folderHasKnownTotal ? formatUsd(folderTotal) : "FX pending";
+  const folderTotalLabel = folderHasPendingFx ? "In folder · FX pending" : "In folder";
   const folderPct = folderExpenses.length > 0 ? Math.round((folderReady / folderExpenses.length) * 100) : 0;
+  const assignmentReports =
+    createdDraftReport && !reports.some((report) => report.id === createdDraftReport.id)
+      ? [...reports, createdDraftReport]
+      : reports;
+
+  useEffect(() => {
+    if (activeFolder && activeFolder.id !== activeReportId) {
+      onActiveReportChange(activeFolder.id);
+    }
+  }, [activeFolder, activeReportId, onActiveReportChange]);
+
+  useEffect(() => {
+    return () => {
+      if (longPressTimer.current) {
+        window.clearTimeout(longPressTimer.current);
+        longPressTimer.current = null;
+      }
+    };
+  }, []);
 
   const counts: Record<InboxFilter, number> = {
     all: expenses.length,
@@ -237,6 +277,17 @@ export function InboxScreen({
     }
   }
 
+  function clearRevealedActionState() {
+    setRevealedExpenseId(null);
+    setRevealedAction(null);
+    setConfirmingExpenseId(null);
+    setAssigningExpenseId(null);
+    setCreatedDraftReport(null);
+    setNewFolderName("");
+    setFolderCreateError("");
+    suppressNextOpen.current = null;
+  }
+
   function startLongPress(expenseId: string) {
     clearLongPressTimer();
     longPressTimer.current = window.setTimeout(() => {
@@ -266,21 +317,18 @@ export function InboxScreen({
       setRevealedExpenseId(expenseId);
       setRevealedAction("assign");
       suppressNextOpen.current = expenseId;
-    } else if (deltaX > 28 || deltaX < -28) {
+    } else {
       setRevealedExpenseId(null);
       setRevealedAction(null);
       setConfirmingExpenseId(null);
       setAssigningExpenseId(null);
+      suppressNextOpen.current = null;
     }
   }
 
   function endSwipe() {
     swipeState.current = null;
     clearLongPressTimer();
-  }
-
-  function touchClientX(event: React.TouchEvent<HTMLButtonElement>) {
-    return event.touches[0]?.clientX ?? event.changedTouches[0]?.clientX;
   }
 
   function openExpense(expenseId: string) {
@@ -315,26 +363,39 @@ export function InboxScreen({
 
   function startAssign(expense: Expense) {
     setAssigningExpenseId(expense.id);
-    setAssignDraftReportId(expense.reportId ?? reports[0]?.id ?? "");
+    setCreatedDraftReport(null);
+    setAssignDraftReportId(
+      expense.reportId && reports.some((report) => report.id === expense.reportId)
+        ? expense.reportId
+        : (activeFolder?.id ?? reports[0]?.id ?? "")
+    );
     setNewFolderName("");
+    setFolderCreateError("");
   }
 
   function confirmAssign(expenseId: string) {
-    if (!assignDraftReportId) return;
+    if (!assignmentReports.some((report) => report.id === assignDraftReportId)) {
+      setFolderCreateError("Selected Expense Folder is no longer available.");
+      return;
+    }
 
     onAssignExpenseFolder(expenseId, assignDraftReportId);
-    setAssigningExpenseId(null);
-    setRevealedExpenseId(null);
-    setRevealedAction(null);
-    suppressNextOpen.current = null;
+    clearRevealedActionState();
   }
 
   function createAndSelectFolder(expenseDate: string) {
-    const report = onCreateExpenseFolder(newFolderName, { startDate: expenseDate, endDate: expenseDate });
-    if (!report) return;
+    const trimmedFolderName = newFolderName.trim();
+    const reportDate = parseExpenseDate(expenseDate);
+    const report = onCreateExpenseFolder(trimmedFolderName, reportDate ? { startDate: expenseDate, endDate: expenseDate } : {});
+    if (!report) {
+      setFolderCreateError("Expense Folder could not be created.");
+      return;
+    }
 
+    setCreatedDraftReport(report);
     setAssignDraftReportId(report.id);
     setNewFolderName("");
+    setFolderCreateError("");
   }
 
   function startRename(expense: Expense) {
@@ -362,6 +423,7 @@ export function InboxScreen({
     const isRenaming = renamingExpenseId === expense.id;
     const title = titleForExpense(expense);
     const isForeign = expense.originalCurrency !== "USD";
+    const finalUsd = finalUsdValue(expense);
 
     return (
       <div className={`swipe-row ${isDeleteRevealed ? "is-delete-revealed" : ""} ${isAssignRevealed ? "is-assign-revealed" : ""}`} key={expense.id}>
@@ -400,15 +462,6 @@ export function InboxScreen({
           onPointerMove={(event) => moveSwipe(expense.id, event.clientX)}
           onPointerUp={endSwipe}
           onPointerCancel={endSwipe}
-          onTouchStart={(event) => {
-            const clientX = touchClientX(event);
-            if (clientX !== undefined) startSwipe(expense.id, clientX);
-          }}
-          onTouchMove={(event) => {
-            const clientX = touchClientX(event);
-            if (clientX !== undefined) moveSwipe(expense.id, clientX);
-          }}
-          onTouchEnd={endSwipe}
         >
           <span className="expense-main">
             <span className={`status-pill ${statusClass(expense.status)}`}>{statusLabel(expense.status)}</span>
@@ -419,7 +472,7 @@ export function InboxScreen({
           <span className="expense-amount">
             <strong>{formatMoney(expense.originalAmount, expense.originalCurrency)}</strong>
             <small>
-              {isForeign ? `${formatMoney(usdValue(expense), "USD")} · ` : ""}
+              {isForeign ? `${finalUsd === undefined ? "Check FX" : formatMoney(finalUsd, "USD")} · ` : ""}
               {expense.expenseDate}
             </small>
           </span>
@@ -473,7 +526,7 @@ export function InboxScreen({
           <div className="delete-confirmation" role="alertdialog" aria-label="Delete expense">
             <strong>Delete expense?</strong>
             <div>
-              <button type="button" onClick={() => setConfirmingExpenseId(null)}>
+              <button type="button" onClick={clearRevealedActionState}>
                 Cancel
               </button>
               <button className="confirm-delete" type="button" onClick={() => confirmDelete(expense.id)}>
@@ -491,7 +544,7 @@ export function InboxScreen({
                 value={assignDraftReportId}
                 onChange={(event) => setAssignDraftReportId(event.target.value)}
               >
-                {reports.map((report) => (
+                {assignmentReports.map((report) => (
                   <option key={report.id} value={report.id}>
                     {report.name}
                   </option>
@@ -504,21 +557,22 @@ export function InboxScreen({
                 <input
                   aria-label="New Expense Folder"
                   value={newFolderName}
-                  onChange={(event) => setNewFolderName(event.target.value)}
+                  onChange={(event) => {
+                    setNewFolderName(event.target.value);
+                    setFolderCreateError("");
+                  }}
                   placeholder="Trip, training, customer visit"
                 />
               </label>
               <button type="button" disabled={!newFolderName.trim()} onClick={() => createAndSelectFolder(expense.expenseDate)}>
                 Create and Select Expense Folder
               </button>
+              {folderCreateError && <p className="folder-create-error">{folderCreateError}</p>}
             </div>
             <div className="assignment-actions">
               <button
                 type="button"
-                onClick={() => {
-                  setAssigningExpenseId(null);
-                  setNewFolderName("");
-                }}
+                onClick={clearRevealedActionState}
               >
                 Cancel
               </button>
@@ -564,8 +618,8 @@ export function InboxScreen({
             <div className="l">Ready</div>
           </div>
           <div className="hero-stat push">
-            <div className="v sm">{formatUsd(folderTotal)}</div>
-            <div className="l">In folder</div>
+            <div className="v sm">{folderTotalText}</div>
+            <div className="l">{folderTotalLabel}</div>
           </div>
         </div>
       </header>
@@ -587,6 +641,23 @@ export function InboxScreen({
         </span>
         <ChevronRight aria-hidden="true" />
       </button>
+
+      {activeFolder && (
+        <label className="active-folder-select">
+          <span>Active Expense Folder</span>
+          <select
+            aria-label="Active Expense Folder"
+            value={activeFolder.id}
+            onChange={(event) => onActiveReportChange(event.target.value)}
+          >
+            {reports.map((report) => (
+              <option key={report.id} value={report.id}>
+                {report.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
 
       <button
         className="sync-strip"

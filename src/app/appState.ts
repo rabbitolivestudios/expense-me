@@ -1,7 +1,8 @@
-import { buildExpenseFolderDateRangeLabel, expenseFolderDateRangeLabel } from "../domain/reportDates";
+import { buildExpenseFolderDateRangeLabel } from "../domain/reportDates";
 import type { Expense, Report } from "../domain/types";
 
 export const defaultFolderId = "report-current";
+let fallbackReportIdCounter = 0;
 
 export interface ExpenseFolderDates {
   startDate?: string;
@@ -49,29 +50,55 @@ export function syncReportsWithExpenses(reports: Report[], expenses: Expense[]) 
     return {
       ...report,
       expenseIds,
-      dateRangeLabel: expenseIds.length > 0 || report.startDate || report.endDate ? expenseFolderDateRangeLabel(report) : "Add expenses to this folder"
+      dateRangeLabel: reportLabelForExpenseIds(report, expenseIds)
     };
   });
+}
+
+export function reportLabelForExpenseIds(report: Report, expenseIds: string[]) {
+  if (report.startDate || report.endDate) {
+    return buildExpenseFolderDateRangeLabel(report.startDate, report.endDate);
+  }
+
+  return expenseIds.length > 0 ? "Ready for export package" : "Add expenses to this folder";
 }
 
 export function safeId(value: string) {
   return value.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").slice(0, 64) || `${Date.now()}`;
 }
 
-export function createExpenseFolderRecord(name: string, dates: ExpenseFolderDates = {}, now = new Date()) {
+export function uniqueReportId(value: string, existingIds: Set<string>) {
+  const base = `report-${safeId(value)}`;
+
+  while (true) {
+    fallbackReportIdCounter += 1;
+    const suffix = globalThis.crypto?.randomUUID?.() ?? `${nowTimestamp()}-${fallbackReportIdCounter}`;
+    const id = `${base}-${suffix}`;
+
+    if (!existingIds.has(id)) return id;
+  }
+}
+
+function nowTimestamp() {
+  return Date.now();
+}
+
+export function createExpenseFolderRecord(name: string, dates: ExpenseFolderDates = {}, now = new Date(), existingIds = new Set<string>()) {
   const trimmedName = name.trim();
   if (!trimmedName) return undefined;
   const startDate = dates.startDate || undefined;
   const endDate = dates.endDate || startDate;
-
-  return {
-    id: `report-${safeId(trimmedName)}-${now.getTime()}`,
+  const report: Report = {
+    id: uniqueReportId(trimmedName, existingIds),
     name: trimmedName,
     startDate,
     endDate,
-    dateRangeLabel: buildExpenseFolderDateRangeLabel(startDate, endDate),
+    dateRangeLabel: "",
     expenseIds: [],
-    status: "Draft" as const,
+    status: "Draft",
     createdAt: now.toISOString()
   };
+  report.dateRangeLabel = reportLabelForExpenseIds(report, report.expenseIds);
+
+  return report;
 }

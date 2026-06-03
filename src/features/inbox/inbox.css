@@ -10,6 +10,40 @@
   font-size: 0.74rem;
 }
 
+.active-folder-select {
+  display: grid;
+  gap: 7px;
+  padding: 13px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+}
+
+.active-folder-select span {
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.active-folder-select select {
+  min-height: 44px;
+  width: 100%;
+  border: 1.5px solid var(--border-strong);
+  border-radius: calc(var(--radius-control) - 3px);
+  background: var(--surface-2);
+  color: var(--text);
+  padding: 9px 11px;
+  font-weight: 800;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.active-folder-select select:focus {
+  outline: 0;
+  border-color: var(--st-review);
+}
+
 .action-card {
   width: 100%;
   text-align: left;
@@ -271,6 +305,13 @@
 .folder-quick-create button:disabled {
   background: var(--border);
   color: var(--text-muted);
+}
+
+.folder-create-error {
+  margin: 0;
+  color: var(--st-declare);
+  font-size: 0.76rem;
+  font-weight: 800;
 }
 
 .assignment-actions {
