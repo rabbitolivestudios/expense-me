@@ -1,4 +1,4 @@
-import { ArrowLeft, Camera, CreditCard, FileText, Keyboard, MailCheck } from "lucide-react";
+import { ArrowLeft, Camera, Check, CreditCard, FileText, Keyboard, MailCheck, RotateCcw } from "lucide-react";
 import { useState } from "react";
 import type { ArtifactType, Expense, IntakeSource, ReceiptArtifact } from "../../domain/types";
 import { createExpenseFromExtractedText } from "../extraction/extractionPipeline";
@@ -11,6 +11,22 @@ interface CaptureSheetProps {
   onOpenCards: () => void;
   onSyncEmail: () => Promise<number>;
 }
+
+interface PendingScan {
+  expense: Expense;
+  artifact: ReceiptArtifact;
+}
+
+const categoryChips = [
+  { label: "Hotel", expenseType: "Stay", subExpenseType: "Hotel" },
+  { label: "Taxi", expenseType: "Transport", subExpenseType: "Taxi" },
+  { label: "Meal", expenseType: "Meals", subExpenseType: "Lunch" },
+  { label: "Fuel", expenseType: "Transport", subExpenseType: "Fuel" },
+  { label: "Parking", expenseType: "Transport", subExpenseType: "Parking" },
+  { label: "Toll", expenseType: "Transport", subExpenseType: "Toll" },
+  { label: "Flight", expenseType: "Transport", subExpenseType: "Air" },
+  { label: "Office", expenseType: "Other Expenses", subExpenseType: "Office Supplies" }
+] as const satisfies ReadonlyArray<Pick<Expense, "expenseType" | "subExpenseType"> & { label: string }>;
 
 function nextId(prefix: string) {
   return `${prefix}-${Date.now()}`;
@@ -96,9 +112,29 @@ function createManualExpense() {
   } satisfies Expense;
 }
 
+function receiptPreviewForArtifact(artifact: ReceiptArtifact) {
+  const extractedPreviewText = artifact.extractedText?.trim();
+
+  if (artifact.mimeType === "application/pdf" && extractedPreviewText) {
+    return <pre>{extractedPreviewText}</pre>;
+  }
+
+  if (artifact.mimeType === "application/pdf") {
+    return <iframe title="Receipt PDF preview" src={artifact.dataUrl} />;
+  }
+
+  if (artifact.mimeType.startsWith("image/")) {
+    return <img alt="Receipt preview" src={artifact.dataUrl} />;
+  }
+
+  return <pre>{artifact.extractedText || "No preview text available."}</pre>;
+}
+
 export function CaptureSheet({ onClose, onExpenseCreated, onOpenCards, onSyncEmail }: CaptureSheetProps) {
   const [statusMessage, setStatusMessage] = useState("");
   const [syncingEmail, setSyncingEmail] = useState(false);
+  const [pendingScan, setPendingScan] = useState<PendingScan | null>(null);
+  const [draftExpense, setDraftExpense] = useState<Expense | null>(null);
 
   async function handleFile(file: File | undefined, sourceType: IntakeSource) {
     if (!file) return;
@@ -106,11 +142,60 @@ export function CaptureSheet({ onClose, onExpenseCreated, onOpenCards, onSyncEma
 
     try {
       const imported = await createExpenseFromFile(file, sourceType);
-      onExpenseCreated(imported.expense, [imported.artifact]);
-      setStatusMessage("Receipt scanned. Review the extracted fields.");
+      setPendingScan(imported);
+      setDraftExpense(imported.expense);
+      setStatusMessage("");
     } catch (error) {
       setStatusMessage(error instanceof Error ? error.message : "Receipt scan failed. Try again or enter it manually.");
     }
+  }
+
+  function updateDraft(patch: Partial<Expense>) {
+    setDraftExpense((current) => (current ? { ...current, ...patch } : current));
+  }
+
+  function updateAmount(value: string) {
+    const parsed = Number(value);
+    updateDraft({
+      originalAmount: Number.isFinite(parsed) ? parsed : 0,
+      finalUsdAmount: draftExpense?.originalCurrency === "USD" && Number.isFinite(parsed) ? parsed : draftExpense?.finalUsdAmount
+    });
+  }
+
+  function updateCurrency(value: string) {
+    updateDraft({
+      originalCurrency: value,
+      finalUsdAmount: value === "USD" ? draftExpense?.originalAmount : undefined
+    });
+  }
+
+  function applyCategoryChip(chip: (typeof categoryChips)[number]) {
+    updateDraft({
+      expenseType: chip.expenseType,
+      subExpenseType: chip.subExpenseType
+    });
+  }
+
+  function confirmScan() {
+    if (!pendingScan || !draftExpense) return;
+    const merchant = draftExpense.merchant?.trim();
+    const description = merchant || draftExpense.description || "Imported receipt";
+
+    onExpenseCreated(
+      {
+        ...draftExpense,
+        merchant: merchant || draftExpense.merchant,
+        description,
+        finalUsdAmount: draftExpense.originalCurrency === "USD" ? draftExpense.originalAmount : draftExpense.finalUsdAmount
+      },
+      [pendingScan.artifact]
+    );
+  }
+
+  function clearPendingScan() {
+    setPendingScan(null);
+    setDraftExpense(null);
+    setStatusMessage("");
   }
 
   async function checkEmail() {
@@ -125,6 +210,97 @@ export function CaptureSheet({ onClose, onExpenseCreated, onOpenCards, onSyncEma
     } finally {
       setSyncingEmail(false);
     }
+  }
+
+  if (pendingScan && draftExpense) {
+    const activeChip = categoryChips.find(
+      (chip) => chip.expenseType === draftExpense.expenseType && chip.subExpenseType === draftExpense.subExpenseType
+    );
+    const preview = receiptPreviewForArtifact(pendingScan.artifact);
+
+    return (
+      <section className="screen-stack" aria-labelledby="review-scan-title">
+        <header className="screen-header">
+          <button className="back-button" type="button" aria-label="Back to Capture" onClick={clearPendingScan}>
+            <ArrowLeft aria-hidden="true" />
+          </button>
+          <div>
+            <p className="eyebrow">Scanned receipt</p>
+            <h1 id="review-scan-title">Review Scan</h1>
+          </div>
+        </header>
+
+        <div className="scan-review">
+          <div className="scan-preview" aria-label="Receipt preview">
+            {preview}
+          </div>
+
+          <div className="scan-fields">
+            <label>
+              <span>Merchant</span>
+              <input
+                aria-label="Merchant"
+                value={draftExpense.merchant ?? ""}
+                onChange={(event) => updateDraft({ merchant: event.target.value, description: event.target.value || draftExpense.description })}
+              />
+            </label>
+            <div className="scan-field-row">
+              <label>
+                <span>Date</span>
+                <input
+                  aria-label="Expense date"
+                  type="date"
+                  value={draftExpense.expenseDate}
+                  onChange={(event) => updateDraft({ expenseDate: event.target.value })}
+                />
+              </label>
+              <label>
+                <span>Amount</span>
+                <input
+                  aria-label="Amount"
+                  inputMode="decimal"
+                  type="number"
+                  value={draftExpense.originalAmount}
+                  onChange={(event) => updateAmount(event.target.value)}
+                />
+              </label>
+            </div>
+            <label>
+              <span>Currency</span>
+              <select aria-label="Currency" value={draftExpense.originalCurrency} onChange={(event) => updateCurrency(event.target.value)}>
+                {["USD", "EUR", "GBP", "CAD", "MXN"].map((currency) => (
+                  <option key={currency} value={currency}>{currency}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </div>
+
+        <div className="scan-chips" aria-label="Category chips">
+          {categoryChips.map((chip) => (
+            <button
+              key={chip.label}
+              type="button"
+              aria-pressed={activeChip?.label === chip.label}
+              onClick={() => applyCategoryChip(chip)}
+            >
+              {chip.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="scan-review-actions">
+          <button type="button" onClick={clearPendingScan}>
+            <RotateCcw aria-hidden="true" />
+            Retake
+          </button>
+          <button className="confirm-scan" type="button" onClick={confirmScan}>
+            <Check aria-hidden="true" />
+            Confirm Scan
+          </button>
+        </div>
+      </section>
+    );
   }
 
   return (

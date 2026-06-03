@@ -36,6 +36,170 @@
   font-weight: 800;
 }
 
+.scan-review {
+  display: grid;
+  gap: 12px;
+}
+
+.scan-preview {
+  min-height: 220px;
+  max-height: 320px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #ffffff;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  box-shadow: var(--shadow-card);
+}
+
+.scan-preview img,
+.scan-preview iframe {
+  width: 100%;
+  height: 100%;
+  min-height: 220px;
+  border: 0;
+  object-fit: contain;
+}
+
+.scan-preview pre {
+  width: 100%;
+  max-height: 260px;
+  margin: 0;
+  padding: 14px;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.scan-fields {
+  display: grid;
+  gap: 10px;
+}
+
+.scan-fields label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 850;
+}
+
+.scan-fields input,
+.scan-fields select {
+  width: 100%;
+  min-height: 46px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  padding: 0 12px;
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 750;
+}
+
+.scan-field-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.82fr);
+  gap: 10px;
+}
+
+.scan-chips {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.scan-chips button {
+  flex: 0 0 auto;
+  min-height: 38px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  padding: 0 13px;
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.scan-chips button[aria-pressed="true"] {
+  border-color: transparent;
+  background: linear-gradient(135deg, var(--brand-violet), var(--brand-hot-orange));
+  color: #ffffff;
+}
+
+.scan-review-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+  gap: 10px;
+}
+
+.scan-review-actions button {
+  min-height: 50px;
+  border: 0;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  font-weight: 950;
+}
+
+.scan-review-actions button:first-child {
+  background: #fff3ec;
+  color: var(--brand-hot-orange);
+}
+
+.scan-review-actions .confirm-scan {
+  background: linear-gradient(135deg, var(--brand-purple), var(--brand-hot-orange));
+  color: #ffffff;
+  box-shadow: var(--shadow-card);
+}
+
+.scan-review-actions svg {
+  width: 18px;
+  height: 18px;
+}
+
+@media (max-height: 700px) {
+  .scan-review {
+    gap: 10px;
+  }
+
+  .scan-preview {
+    min-height: 170px;
+    max-height: 220px;
+  }
+
+  .scan-preview img,
+  .scan-preview iframe {
+    min-height: 170px;
+  }
+
+  .scan-preview pre {
+    max-height: 200px;
+    padding: 12px;
+    font-size: 0.78rem;
+  }
+
+  .scan-fields {
+    gap: 8px;
+  }
+
+  .scan-fields input,
+  .scan-fields select {
+    min-height: 42px;
+  }
+
+  .scan-review-actions button {
+    min-height: 46px;
+  }
+}
+
 .visually-hidden {
   position: absolute;
   width: 1px;
