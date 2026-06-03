@@ -35,7 +35,7 @@ export function ExportScreen({ reports, expenses, receiptArtifacts, onBack, onGe
     );
   }
 
-  const checklist = buildReadinessChecklist(report, expenses);
+  const checklist = buildReadinessChecklist(report, expenses, receiptArtifacts);
   const hasExpenses = report.expenseIds.length > 0;
   const ready = hasExpenses && checklist.length === 0;
 

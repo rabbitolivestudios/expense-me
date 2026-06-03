@@ -497,11 +497,8 @@ export class D1ExpenseMeRepository {
       throw new ExportPackageNotFoundError();
     }
 
-    const receiptArtifactIds = new Set(
-      snapshot.expenses
-        .filter((expense) => report.expenseIds.includes(expense.id))
-        .flatMap((expense) => expense.receiptArtifactIds)
-    );
+    const packageExpenses = snapshot.expenses.filter((expense) => report.expenseIds.includes(expense.id));
+    const receiptArtifactIds = new Set(packageExpenses.flatMap((expense) => expense.receiptArtifactIds));
     const receiptArtifacts = await Promise.all(
       snapshot.receiptArtifacts
         .filter((artifact) => receiptArtifactIds.has(artifact.id))
@@ -525,11 +522,14 @@ export class D1ExpenseMeRepository {
       id,
       reportId: report.id,
       generatedAt: now,
-      reviewPdfName: `${safeReportName}-review-report.txt`,
+      reviewPdfName: `${safeReportName}-expense-index.pdf`,
       spreadsheetName: `${safeReportName}-entry-spreadsheet.csv`,
       receiptsZipName: `${safeReportName}-receipts.zip`,
-      declarationPdfNames: report.expenseIds.map((expenseId) => `${expenseId}-missing-receipt-declaration.txt`),
-      reconciliationNotesName: `${safeReportName}-reconciliation-notes.txt`
+      declarationPdfNames: packageExpenses
+        .map((expense) => expense.declarationId)
+        .filter((declarationId): declarationId is string => Boolean(declarationId))
+        .map((declarationId) => `${declarationId}.pdf`),
+      reconciliationNotesName: `${safeReportName}-reconciliation-notes.pdf`
     };
 
     await this.env.EXPENSE_ME_ARTIFACTS.put(objectKey, archive, {

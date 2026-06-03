@@ -1,4 +1,5 @@
 import JSZip from "jszip";
+import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { expenseFolderDateRangeLabel } from "../../domain/reportDates";
 import type { Expense, ReceiptArtifact, Report } from "../../domain/types";
 import { isMealExpenseType } from "../../domain/options";
@@ -48,9 +49,29 @@ function needsFinalUsd(expense: Expense) {
   return expense.originalCurrency !== "USD" && (!Number.isFinite(expense.finalUsdAmount) || Number(expense.finalUsdAmount) <= 0);
 }
 
-export function buildReadinessChecklist(report: Report, expenses: Expense[]): ReadinessItem[] {
+function missingExpenseIds(report: Report, expenses: Expense[]) {
+  const expenseIds = new Set(expenses.map((expense) => expense.id));
+  return report.expenseIds.filter((expenseId) => !expenseIds.has(expenseId));
+}
+
+function missingReceiptArtifactIds(expenses: Expense[], receiptArtifacts: ReceiptArtifact[] | undefined) {
+  if (!receiptArtifacts) return [];
+
+  const artifactIds = new Set(receiptArtifacts.map((artifact) => artifact.id));
+  return expenses.flatMap((expense) =>
+    expense.receiptArtifactIds
+      .filter((artifactId) => !artifactIds.has(artifactId))
+      .map((artifactId) => ({ expense, artifactId }))
+  );
+}
+
+export function buildReadinessChecklist(report: Report, expenses: Expense[], receiptArtifacts?: ReceiptArtifact[]): ReadinessItem[] {
   const reportExpenses = expenses.filter((expense) => report.expenseIds.includes(expense.id));
   const items: ReadinessItem[] = [];
+
+  for (const expenseId of missingExpenseIds(report, expenses)) {
+    items.push({ kind: "field", expenseId, message: `Unknown expense (${expenseId}): Expense record is missing.` });
+  }
 
   for (const expense of reportExpenses) {
     if (expense.reportId !== report.id) {
@@ -69,6 +90,15 @@ export function buildReadinessChecklist(report: Report, expenses: Expense[]): Re
 
     if (expense.receiptArtifactIds.length === 0 && !expense.declarationId) {
       items.push({ kind: "declaration", expenseId: expense.id, message: readinessMessage(expense, "Missing receipt declaration is required.") });
+    }
+
+    if (
+      receiptArtifacts &&
+      expense.receiptArtifactIds.length > 0 &&
+      missingReceiptArtifactIds([expense], receiptArtifacts).length > 0 &&
+      !expense.declarationId
+    ) {
+      items.push({ kind: "receipt", expenseId: expense.id, message: readinessMessage(expense, "Receipt evidence is missing from stored artifacts.") });
     }
 
     if ((expense.status === "FX" || needsFinalUsd(expense)) && !items.some((item) => item.kind === "fx" && item.expenseId === expense.id)) {
@@ -121,20 +151,18 @@ function safeFilename(value: string) {
   return value.replace(/[<>:"/\\|?*\x00-\x1F]+/g, "-").replace(/^-|-$/g, "") || "receipt";
 }
 
-function extensionForMimeType(mimeType: string) {
-  if (mimeType === "application/pdf") return "pdf";
-  if (mimeType === "image/png") return "png";
-  if (mimeType === "image/webp") return "webp";
-  if (mimeType === "text/plain") return "txt";
-  return "jpg";
+function filenameBase(value: string) {
+  return safeFilename(value).replace(/\.[^.]+$/, "") || "receipt";
 }
 
-function artifactFilename(artifact: ReceiptArtifact) {
-  const filename = artifact.originalFilename
-    ? safeFilename(artifact.originalFilename)
-    : `${safeFilename(artifact.id)}.${extensionForMimeType(artifact.mimeType)}`;
+function artifactPdfFilename(artifact: ReceiptArtifact) {
+  const base = artifact.originalFilename
+    ? filenameBase(artifact.originalFilename)
+    : artifact.artifactType === "EmailBody"
+      ? "email-receipt"
+      : filenameBase(artifact.id);
 
-  return filename.includes(".") ? filename : `${filename}.${extensionForMimeType(artifact.mimeType)}`;
+  return `${safeFilename(artifact.id)}-${base}.pdf`;
 }
 
 function dataUrlToBytes(dataUrl: string) {
@@ -147,6 +175,20 @@ function dataUrlToBytes(dataUrl: string) {
   }
 
   return bytes;
+}
+
+function dataUrlMimeType(dataUrl: string) {
+  return dataUrl.match(/^data:([^;,]+)/)?.[1];
+}
+
+function dataUrlToText(dataUrl: string) {
+  const [, payload = ""] = dataUrl.split(",");
+  if (dataUrl.includes(";base64,")) {
+    const bytes = dataUrlToBytes(dataUrl);
+    return new TextDecoder().decode(bytes);
+  }
+
+  return decodeURIComponent(payload);
 }
 
 function evidenceLabel(expense: Expense) {
@@ -195,14 +237,17 @@ function buildEntryCsv(report: Report, expenses: Expense[]) {
 
 function buildReviewReport(report: Report, expenses: Expense[]) {
   return [
-    `Export Package Review: ${report.name}`,
+    `Export Package Expense Index: ${report.name}`,
     `Date range: ${expenseFolderDateRangeLabel(report)}`,
+    `Expense count: ${expenses.length}`,
     "",
-    ...expenses.flatMap((expense) => [
-      `${expense.expenseDate} | ${expense.expenseType} / ${expense.subExpenseType}`,
-      `${expense.description}`,
-      `${expense.originalAmount.toFixed(2)} ${expense.originalCurrency}${expense.finalUsdAmount ? ` | Final USD ${expense.finalUsdAmount.toFixed(2)}` : ""}`,
+    ...expenses.flatMap((expense, index) => [
+      `${index + 1}. ${expense.expenseDate} | ${expense.expenseType} / ${expense.subExpenseType}`,
+      `Merchant: ${expense.merchant ?? "Not specified"}`,
+      `Description: ${expense.description}`,
+      `Amount: ${expense.originalAmount.toFixed(2)} ${expense.originalCurrency}${expense.finalUsdAmount ? ` | Final USD ${expense.finalUsdAmount.toFixed(2)}` : ""}`,
       `Location: ${expense.region}, ${expense.country}, ${expense.city}`,
+      `Payment: ${expense.paymentMethod}`,
       `Evidence: ${evidenceLabel(expense)}`,
       ""
     ])
@@ -234,13 +279,13 @@ export function buildExportPackageFiles(input: ExportPackageBuildInput): ExportP
   const expenses = reportExpenses(input.report, input.expenses);
   const files: ExportPackageFiles = {
     "entry-spreadsheet.csv": buildEntryCsv(input.report, expenses),
-    "review-report.txt": buildReviewReport(input.report, expenses),
-    "reconciliation-notes.txt": buildReconciliationNotes(input.report, expenses)
+    "expense-index.source.txt": buildReviewReport(input.report, expenses),
+    "reconciliation-notes.source.txt": buildReconciliationNotes(input.report, expenses)
   };
 
   for (const expense of expenses) {
     if (expense.declarationId) {
-      files[`declarations/${expense.declarationId}.txt`] = createDeclarationText(
+      files[`declarations/${expense.declarationId}.source.txt`] = createDeclarationText(
         expense,
         input.employeeName,
         input.reportReference
@@ -251,22 +296,190 @@ export function buildExportPackageFiles(input: ExportPackageBuildInput): ExportP
   return files;
 }
 
+function wrapText(text: string, maxCharacters: number) {
+  const lines: string[] = [];
+
+  for (const rawLine of text.split(/\r?\n/)) {
+    const words = rawLine.split(/\s+/).filter(Boolean);
+    let line = "";
+
+    if (words.length === 0) {
+      lines.push("");
+      continue;
+    }
+
+    for (const word of words) {
+      const next = line ? `${line} ${word}` : word;
+      if (next.length > maxCharacters && line) {
+        lines.push(line);
+        line = word;
+      } else {
+        line = next;
+      }
+    }
+
+    lines.push(line);
+  }
+
+  return lines;
+}
+
+async function buildTextPdf(title: string, text: string) {
+  const pdf = await PDFDocument.create();
+  const regularFont = await pdf.embedFont(StandardFonts.Helvetica);
+  const boldFont = await pdf.embedFont(StandardFonts.HelveticaBold);
+  const margin = 48;
+  const fontSize = 10;
+  const lineHeight = 14;
+  const titleSize = 16;
+  const lines = wrapText(text, 92);
+  let page = pdf.addPage([612, 792]);
+  let y = 792 - margin;
+
+  page.drawText(title, {
+    x: margin,
+    y,
+    size: titleSize,
+    font: boldFont,
+    color: rgb(0.08, 0.06, 0.18)
+  });
+  y -= 28;
+
+  for (const line of lines) {
+    if (y < margin) {
+      page = pdf.addPage([612, 792]);
+      y = 792 - margin;
+    }
+
+    page.drawText(line || " ", {
+      x: margin,
+      y,
+      size: fontSize,
+      font: regularFont,
+      color: rgb(0.08, 0.06, 0.18)
+    });
+    y -= lineHeight;
+  }
+
+  return pdf.save();
+}
+
+async function buildImagePdf(bytes: Uint8Array, mimeType: string) {
+  const pdf = await PDFDocument.create();
+  const page = pdf.addPage([612, 792]);
+  const image = mimeType === "image/png"
+    ? await pdf.embedPng(bytes)
+    : await pdf.embedJpg(bytes);
+  const margin = 36;
+  const maxWidth = page.getWidth() - margin * 2;
+  const maxHeight = page.getHeight() - margin * 2;
+  const scale = Math.min(maxWidth / image.width, maxHeight / image.height, 1);
+  const width = image.width * scale;
+  const height = image.height * scale;
+
+  page.drawImage(image, {
+    x: (page.getWidth() - width) / 2,
+    y: (page.getHeight() - height) / 2,
+    width,
+    height
+  });
+
+  return pdf.save();
+}
+
+async function buildArtifactPdf(artifact: ReceiptArtifact) {
+  if (artifact.artifactType === "EmailBody") {
+    return buildTextPdf("Email Receipt", artifact.extractedText ?? "Email receipt content was not stored.");
+  }
+
+  if (artifact.dataUrl) {
+    const mimeType = dataUrlMimeType(artifact.dataUrl) ?? artifact.mimeType;
+
+    if (mimeType === "text/plain") {
+      return buildTextPdf(artifact.originalFilename ?? "Receipt", dataUrlToText(artifact.dataUrl));
+    }
+
+    const bytes = dataUrlToBytes(artifact.dataUrl);
+
+    if (mimeType === "application/pdf") {
+      return bytes;
+    }
+
+    if (mimeType === "image/png" || mimeType === "image/jpeg" || mimeType === "image/jpg") {
+      try {
+        return await buildImagePdf(bytes, mimeType);
+      } catch {
+        return buildTextPdf(
+          artifact.originalFilename ?? artifact.id,
+          [
+            `Receipt artifact: ${artifact.id}`,
+            `Original filename: ${artifact.originalFilename ?? "Not available"}`,
+            `MIME type: ${artifact.mimeType}`,
+            "",
+            artifact.extractedText ?? "The receipt image could not be embedded in this generated PDF."
+          ].join("\n")
+        );
+      }
+    }
+  }
+
+  return buildTextPdf(
+    artifact.originalFilename ?? artifact.id,
+    [
+      `Receipt artifact: ${artifact.id}`,
+      `Type: ${artifact.artifactType}`,
+      `Original filename: ${artifact.originalFilename ?? "Not available"}`,
+      `Source message: ${artifact.sourceMessageId ?? "Not available"}`,
+      "",
+      artifact.extractedText ?? "Receipt copy is referenced by artifact id but binary content is not stored locally."
+    ].join("\n")
+  );
+}
+
 export async function buildExportPackageZip(input: ExportPackageBuildInput) {
+  const missingExpenses = missingExpenseIds(input.report, input.expenses);
+  if (missingExpenses.length > 0) {
+    throw new Error(`Export Package is missing expenses: ${missingExpenses.join(", ")}`);
+  }
+
   const zip = new JSZip();
   const files = buildExportPackageFiles(input);
   const expenses = reportExpenses(input.report, input.expenses);
   const receiptArtifactIds = new Set(expenses.flatMap((expense) => expense.receiptArtifactIds));
   const receiptArtifacts = (input.receiptArtifacts ?? []).filter((artifact) => receiptArtifactIds.has(artifact.id));
+  const missingReceipts = missingReceiptArtifactIds(expenses, input.receiptArtifacts ?? []);
+
+  if (missingReceipts.length > 0) {
+    throw new Error(`Export Package is missing receipt artifacts: ${missingReceipts.map((item) => item.artifactId).join(", ")}`);
+  }
+
+  if (files["entry-spreadsheet.csv"]) {
+    zip.file("entry-spreadsheet.csv", files["entry-spreadsheet.csv"]);
+  }
+
+  if (files["expense-index.source.txt"]) {
+    zip.file("expense-index.pdf", await buildTextPdf("Export Package Expense Index", files["expense-index.source.txt"]));
+  }
+
+  if (files["reconciliation-notes.source.txt"]) {
+    zip.file(
+      "reconciliation-notes.pdf",
+      await buildTextPdf("Export Package Reconciliation Notes", files["reconciliation-notes.source.txt"])
+    );
+  }
 
   for (const [path, contents] of Object.entries(files)) {
-    zip.file(path, contents);
+    const declarationMatch = path.match(/^declarations\/(.+)\.source\.txt$/);
+    if (declarationMatch) {
+      zip.file(`declarations/${declarationMatch[1]}.pdf`, await buildTextPdf("Missing Receipt Declaration", contents));
+    }
   }
 
   if (receiptArtifacts.length > 0) {
     const usedPaths = new Set<string>();
 
     for (const artifact of receiptArtifacts) {
-      const basePath = `receipts/${artifact.id}-${artifactFilename(artifact)}`;
+      const basePath = `receipts/${artifactPdfFilename(artifact)}`;
       let path = basePath;
       let copy = 2;
       while (usedPaths.has(path)) {
@@ -274,30 +487,18 @@ export async function buildExportPackageZip(input: ExportPackageBuildInput) {
         copy += 1;
       }
       usedPaths.add(path);
-
-      if (artifact.dataUrl) {
-        zip.file(path, dataUrlToBytes(artifact.dataUrl));
-      } else {
-        zip.file(
-          path.replace(/\.[^.]+$/, ".txt"),
-          [
-            `Receipt artifact: ${artifact.id}`,
-            `Type: ${artifact.artifactType}`,
-            `Original filename: ${artifact.originalFilename ?? "Not available"}`,
-            `Source message: ${artifact.sourceMessageId ?? "Not available"}`,
-            "",
-            artifact.extractedText ?? "Receipt copy is referenced by artifact id but binary content is not stored locally."
-          ].join("\n")
-        );
-      }
+      zip.file(path, await buildArtifactPdf(artifact));
     }
   }
 
   zip.file(
-    "receipts/README.txt",
-    receiptArtifacts.length > 0
-      ? "Receipt/evidence files in this folder correspond to the Receipt or declaration column in entry-spreadsheet.csv."
-      : "No receipt binaries were stored for this export. Missing receipts require declarations in the declarations folder."
+    "receipts/README.pdf",
+    await buildTextPdf(
+      "Receipts Folder",
+      receiptArtifacts.length > 0
+        ? "Receipt/evidence PDFs in this folder correspond to the Receipt or declaration column in entry-spreadsheet.csv."
+        : "No receipt binaries were stored for this export. Missing receipts require declarations in the declarations folder."
+    )
   );
 
   return zip.generateAsync({ type: "uint8array" });

@@ -21,7 +21,7 @@ V1 should:
 - reconcile card statements to find missed charges;
 - mirror company-required fields and dropdowns;
 - require missing-receipt declarations when evidence is absent;
-- generate an Export Package with transaction details and receipt/declaration evidence.
+- generate an Export Package with transaction details and PDF receipt/declaration evidence.
 
 ## Expense Folder Requirement
 
@@ -72,6 +72,17 @@ V1.5 should use Cloudflare Access for the single-user login gate, Cloudflare D1 
 Cloud snapshots carry cloud-only row version metadata in `recordVersions`. Existing-record mutation requests must send the expected version from the last loaded snapshot so V1.5 does not silently overwrite fresher data from another browser/device. Internal server workflows such as first migration and trusted sync repairs may use explicit force writes after loading current cloud state.
 
 AgentMail automatic intake should use the same idempotent server sync path as the Inbox button. The webhook only wakes the sync after a new received message; the app still fetches the full AgentMail message detail through the server-side API key before writing D1/R2 records.
+
+## Export Package Evidence Format
+
+The company expense report system requires attachable artifacts in PDF form. Export Packages may keep `entry-spreadsheet.csv` for entry data, but every supporting artifact intended for attachment must be a PDF:
+
+- email receipts are printed into generated PDF copies;
+- camera/image/scanned receipt artifacts are wrapped in generated PDFs;
+- missing-receipt declarations are generated as PDFs;
+- the readable expense index and reconciliation notes are generated as PDFs.
+
+The export builder must fail closed when an Expense Folder references a missing expense or receipt artifact, rather than generating a package with dropped evidence.
 
 ## Review Gate
 

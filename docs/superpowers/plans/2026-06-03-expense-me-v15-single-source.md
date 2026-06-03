@@ -50,6 +50,7 @@ Continuation update:
 - Task 10A is complete: signed AgentMail webhook intake through `POST /api/agentmail/webhook` triggers the same idempotent cloud sync without exposing the human Access-protected API.
 - Task 11 backend route support is implemented for frontend use: `POST /api/export-packages` creates a cloud Export Package and returns `{ exportPackage, downloadUrl }`, and the authenticated download route returns the R2 ZIP.
 - V1 production hotfix `6f39eb6 fix: sync declaration folder membership` is live on `origin/main`; the same declaration membership behavior is carried into the V1.5 `App` changes in the current working tree.
+- Export Package evidence has been tightened for company attachment requirements: `entry-spreadsheet.csv` remains the data entry sheet, but receipts, declarations, the readable expense index, and reconciliation notes are generated as PDFs, and package builds fail closed on missing expense or receipt artifact references.
 
 ## Target Files
 

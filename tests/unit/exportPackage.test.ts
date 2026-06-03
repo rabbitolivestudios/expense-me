@@ -45,6 +45,38 @@ describe("Export Package readiness", () => {
     });
   });
 
+  it("blocks exports when an Expense Folder references a missing expense", () => {
+    const checklist = buildReadinessChecklist(
+      { ...seedReports[0], expenseIds: ["missing-expense"] },
+      seedExpenses,
+      seedArtifacts
+    );
+
+    expect(checklist).toContainEqual({
+      kind: "field",
+      expenseId: "missing-expense",
+      message: "Unknown expense (missing-expense): Expense record is missing."
+    });
+  });
+
+  it("blocks exports when a receipt artifact id cannot be resolved", () => {
+    const expense = {
+      ...seedExpenses[0],
+      receiptArtifactIds: ["missing-artifact"]
+    };
+    const checklist = buildReadinessChecklist(
+      { ...seedReports[0], expenseIds: [expense.id] },
+      [expense],
+      []
+    );
+
+    expect(checklist).toContainEqual({
+      kind: "receipt",
+      expenseId: expense.id,
+      message: "Avec River North (2026-05-20): Receipt evidence is missing from stored artifacts."
+    });
+  });
+
   it("builds handoff files with corporate fields and declaration text", () => {
     const expenses = seedExpenses.map((expense) =>
       expense.id === "exp-fuel-training" ? { ...expense, declarationId: "decl-exp-fuel-training", status: "Ready" as const } : expense
@@ -60,9 +92,9 @@ describe("Export Package readiness", () => {
     expect(files["entry-spreadsheet.csv"]).toContain("Transport,Fuel,2026-05-20,NAFTA,United States,Chicago");
     expect(files["entry-spreadsheet.csv"]).toContain("Receipt attached: art-restaurant-receipt");
     expect(files["entry-spreadsheet.csv"]).toContain("Declaration: decl-exp-fuel-training");
-    expect(files["review-report.txt"]).toContain("Chicago Training - May 2026");
-    expect(files["declarations/decl-exp-fuel-training.txt"]).toContain("Gas roundtrip Schererville / Training");
-    expect(files["reconciliation-notes.txt"]).toContain("Export Package");
+    expect(files["expense-index.source.txt"]).toContain("Chicago Training - May 2026");
+    expect(files["declarations/decl-exp-fuel-training.source.txt"]).toContain("Gas roundtrip Schererville / Training");
+    expect(files["reconciliation-notes.source.txt"]).toContain("Export Package");
   });
 
   it("neutralizes formula-like values in exported CSV cells", () => {
@@ -91,12 +123,13 @@ describe("Export Package readiness", () => {
     const zip = await JSZip.loadAsync(archive);
 
     expect(zip.file("entry-spreadsheet.csv")).toBeTruthy();
-    expect(zip.file("review-report.txt")).toBeTruthy();
-    expect(zip.file("declarations/decl-exp-fuel-training.txt")).toBeTruthy();
-    expect(zip.file("receipts/art-restaurant-receipt-avec-dinner.txt")).toBeTruthy();
+    expect(zip.file("expense-index.pdf")).toBeTruthy();
+    expect(zip.file("declarations/decl-exp-fuel-training.pdf")).toBeTruthy();
+    expect(zip.file("receipts/art-restaurant-receipt-avec-dinner.pdf")).toBeTruthy();
+    expect(Object.keys(zip.files).filter((path) => path.endsWith(".txt"))).toEqual([]);
   });
 
-  it("includes locally stored receipt binaries in the export package", async () => {
+  it("wraps locally stored text receipts in PDF files", async () => {
     const receiptArtifact: ReceiptArtifact = {
       id: "art-uploaded-receipt",
       artifactType: "UploadedImage",
@@ -121,6 +154,125 @@ describe("Export Package readiness", () => {
     });
     const zip = await JSZip.loadAsync(archive);
 
-    await expect(zip.file("receipts/art-uploaded-receipt-receipt.txt")?.async("string")).resolves.toBe("receipt copy");
+    expect(zip.file("receipts/art-uploaded-receipt-receipt.pdf")).toBeTruthy();
+    expect(zip.file("receipts/art-uploaded-receipt-receipt.txt")).toBeNull();
+    await expect(zip.file("receipts/art-uploaded-receipt-receipt.pdf")?.async("string")).resolves.toMatch(/^%PDF/);
+  });
+
+  it("wraps percent-encoded text data URL receipts in PDF files", async () => {
+    const receiptArtifact: ReceiptArtifact = {
+      id: "art-text-url-receipt",
+      artifactType: "UploadedImage",
+      originalFilename: "receipt.txt",
+      mimeType: "text/plain",
+      storageKey: "local/receipt.txt",
+      createdAt: "2026-05-20T12:00:00.000Z",
+      dataUrl: "data:text/plain,receipt%20copy"
+    };
+    const expense = {
+      ...seedExpenses[0],
+      receiptArtifactIds: [receiptArtifact.id]
+    };
+    const archive = await buildExportPackageZip({
+      report: { ...seedReports[0], expenseIds: [expense.id] },
+      expenses: [expense],
+      receiptArtifacts: [receiptArtifact],
+      employeeName: "CASTRO Laurent",
+      reportReference: "EXP-1229"
+    });
+    const zip = await JSZip.loadAsync(archive);
+
+    expect(zip.file("receipts/art-text-url-receipt-receipt.pdf")).toBeTruthy();
+    await expect(zip.file("receipts/art-text-url-receipt-receipt.pdf")?.async("string")).resolves.toMatch(/^%PDF/);
+  });
+
+  it("fails closed when building a package with missing referenced receipts", async () => {
+    const expense = {
+      ...seedExpenses[0],
+      receiptArtifactIds: ["missing-artifact"]
+    };
+
+    await expect(buildExportPackageZip({
+      report: { ...seedReports[0], expenseIds: [expense.id] },
+      expenses: [expense],
+      receiptArtifacts: [],
+      employeeName: "CASTRO Laurent",
+      reportReference: "EXP-1229"
+    })).rejects.toThrow("Export Package is missing receipt artifacts: missing-artifact");
+  });
+
+  it("exports email body receipts as PDF files instead of text fallbacks", async () => {
+    const emailArtifact: ReceiptArtifact = {
+      id: "art-uber-email",
+      artifactType: "EmailBody",
+      sourceMessageId: "uber-message-1",
+      mimeType: "text/plain",
+      storageKey: "agentmail/uber-message-1",
+      createdAt: "2026-05-20T12:00:00.000Z",
+      extractedText: "Subject: Your trip with Uber\nUber\nTotal $18.42"
+    };
+    const expense = {
+      ...seedExpenses[0],
+      sourceType: "Email" as const,
+      merchant: "Uber",
+      description: "Uber: Chicago office -> Home",
+      receiptArtifactIds: [emailArtifact.id]
+    };
+    const archive = await buildExportPackageZip({
+      report: { ...seedReports[0], expenseIds: [expense.id] },
+      expenses: [expense],
+      receiptArtifacts: [emailArtifact],
+      employeeName: "CASTRO Laurent",
+      reportReference: "EXP-1229"
+    });
+    const zip = await JSZip.loadAsync(archive);
+
+    expect(zip.file("receipts/art-uber-email-email-receipt.pdf")).toBeTruthy();
+    expect(zip.file("receipts/art-uber-email-email-receipt.txt")).toBeNull();
+    await expect(zip.file("receipts/art-uber-email-email-receipt.pdf")?.async("string")).resolves.toMatch(/^%PDF/);
+  });
+
+  it("wraps scanned receipt image files in PDFs for the expense system", async () => {
+    const imageArtifact: ReceiptArtifact = {
+      id: "art-scan",
+      artifactType: "CameraImage",
+      originalFilename: "taxi-receipt.png",
+      mimeType: "image/png",
+      storageKey: "local/taxi-receipt.png",
+      createdAt: "2026-05-20T12:00:00.000Z",
+      dataUrl: `data:image/png;base64,${btoa("png bytes")}`
+    };
+    const expense = {
+      ...seedExpenses[1],
+      receiptArtifactIds: [imageArtifact.id]
+    };
+    const archive = await buildExportPackageZip({
+      report: { ...seedReports[1], expenseIds: [expense.id] },
+      expenses: [expense],
+      receiptArtifacts: [imageArtifact],
+      employeeName: "CASTRO Laurent",
+      reportReference: "EXP-1229"
+    });
+    const zip = await JSZip.loadAsync(archive);
+
+    expect(zip.file("receipts/art-scan-taxi-receipt.pdf")).toBeTruthy();
+    expect(zip.file("receipts/art-scan-taxi-receipt.png")).toBeNull();
+    expect(zip.file("receipts/art-scan-taxi-receipt.txt")).toBeNull();
+    await expect(zip.file("receipts/art-scan-taxi-receipt.pdf")?.async("string")).resolves.toMatch(/^%PDF/);
+  });
+
+  it("adds a readable PDF expense index to the export package", async () => {
+    const archive = await buildExportPackageZip({
+      report: seedReports[0],
+      expenses: seedExpenses,
+      receiptArtifacts: seedArtifacts,
+      employeeName: "CASTRO Laurent",
+      reportReference: "EXP-1229"
+    });
+    const zip = await JSZip.loadAsync(archive);
+
+    expect(zip.file("expense-index.pdf")).toBeTruthy();
+    expect(zip.file("review-report.txt")).toBeNull();
+    await expect(zip.file("expense-index.pdf")?.async("string")).resolves.toMatch(/^%PDF/);
   });
 });

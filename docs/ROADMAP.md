@@ -22,7 +22,7 @@ Build a mobile-first expense companion that captures work expenses, catches miss
 - Card statement import and reconciliation.
 - Multiple currency fields, final USD amount, FX rate, and foreign transaction fee capture.
 - Missing receipt declaration support.
-- Export Package generation with spreadsheet, review notes, receipt copies, and declarations.
+- Export Package generation with an entry spreadsheet plus PDF review notes, PDF receipt copies, PDF declarations, and a PDF expense index.
 - Expense deletion from Inbox swipe-left and Expense Detail.
 - Browser-local OCR for camera/image receipts.
 - PDF embedded-text extraction with scanned-PDF OCR fallback.
@@ -30,7 +30,7 @@ Build a mobile-first expense companion that captures work expenses, catches miss
 ## V1 Next Milestones
 
 1. Add image preprocessing before OCR: crop, rotate, contrast, resize, sharpen.
-2. Ship V1.5 shared data at `expense.mac-tbo.com` behind Cloudflare Access, using D1/R2 as the durable source while keeping the Vercel V1 app live as fallback, with AgentMail webhook intake for automatic received-email sync.
+2. Ship V1.5 shared data at `expense.mac-tbo.com` behind Cloudflare Access, using D1/R2 as the durable source while keeping the Vercel V1 app live as fallback, with AgentMail webhook intake for automatic received-email sync and PDF-only supporting evidence in Export Packages.
 3. Add optional low-cost LLM extraction behind a server API.
 4. Add confidence warnings for OCR/parsed fields.
 5. Add duplicate receipt detection across OCR text, merchant/date/amount, and card matches.
