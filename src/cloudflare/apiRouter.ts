@@ -1,4 +1,5 @@
 import type { AppSnapshot, Expense, ExportPackage, ReceiptArtifact, Report, StatementCharge } from "../domain/types";
+import { agentMailWebhookUser, verifyAgentMailWebhook } from "./agentMailWebhook";
 import { requireAccessUser } from "./accessAuth";
 import {
   D1ExpenseMeRepository,
@@ -98,8 +99,30 @@ function downloadFilename(value: string) {
 export async function handleApiRequest(request: Request, env: CloudflareEnv, deps: RouteDeps = {}) {
   try {
     const url = new URL(request.url);
-    const user = await requireAccessUser(request, env);
     const repository = deps.repository ?? new D1ExpenseMeRepository(env);
+
+    if (request.method === "POST" && url.pathname === "/api/agentmail/webhook") {
+      try {
+        const payload = await verifyAgentMailWebhook(request, env);
+
+        if (payload.event_type !== "message.received") {
+          return jsonResponse({ ok: true, ignored: true });
+        }
+
+        const context = await repository.getOrCreateWorkspace(agentMailWebhookUser(env));
+        await syncServerAgentMail(env, context, repository);
+        return jsonResponse({ ok: true });
+      } catch (error) {
+        if (error instanceof Response) {
+          return error;
+        }
+
+        console.error("AgentMail webhook sync failed.", error);
+        return errorResponse(502, "Email sync failed.");
+      }
+    }
+
+    const user = await requireAccessUser(request, env);
     const context = await repository.getOrCreateWorkspace(user);
 
     if (request.method === "GET" && url.pathname === "/api/bootstrap") {

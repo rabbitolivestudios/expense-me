@@ -47,6 +47,7 @@ Continuation update:
 - Task 8 frontend cloud-state wiring is implemented in the working tree: `App` now loads through `useExpenseMeCloudState`, mutations call `CloudRepository`, V1 migration is explicit, active Expense Folder remains a transient local preference, email sync calls `POST /api/email/sync`, and Export Package generation calls the cloud export route.
 - Task 9 backend/API work is implemented for Expenses with artifacts, Expense Folder routes, receipt upload, and statement import with reconciliation.
 - Task 10 backend/API work is implemented for server-side AgentMail sync through `POST /api/email/sync`, including server-side credentials, idempotent imports, R2-backed email body artifacts, and `sync_runs`.
+- Task 10A is complete: signed AgentMail webhook intake through `POST /api/agentmail/webhook` triggers the same idempotent cloud sync without exposing the human Access-protected API.
 - Task 11 backend route support is implemented for frontend use: `POST /api/export-packages` creates a cloud Export Package and returns `{ exportPackage, downloadUrl }`, and the authenticated download route returns the R2 ZIP.
 - V1 production hotfix `6f39eb6 fix: sync declaration folder membership` is live on `origin/main`; the same declaration membership behavior is carried into the V1.5 `App` changes in the current working tree.
 

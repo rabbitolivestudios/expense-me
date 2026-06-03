@@ -30,7 +30,7 @@ Build a mobile-first expense companion that captures work expenses, catches miss
 ## V1 Next Milestones
 
 1. Add image preprocessing before OCR: crop, rotate, contrast, resize, sharpen.
-2. Ship V1.5 shared data at `expense.mac-tbo.com` behind Cloudflare Access, using D1/R2 as the durable source while keeping the Vercel V1 app live as fallback.
+2. Ship V1.5 shared data at `expense.mac-tbo.com` behind Cloudflare Access, using D1/R2 as the durable source while keeping the Vercel V1 app live as fallback, with AgentMail webhook intake for automatic received-email sync.
 3. Add optional low-cost LLM extraction behind a server API.
 4. Add confidence warnings for OCR/parsed fields.
 5. Add duplicate receipt detection across OCR text, merchant/date/amount, and card matches.

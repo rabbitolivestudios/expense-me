@@ -13,6 +13,7 @@ const context: WorkspaceContext = {
   workspaceId: "workspace-personal",
   user: { id: "local:thiago@example.com", email: "thiago@example.com" }
 };
+const testWebhookSecret = ["whsec", btoa("test-secret")].join("_");
 
 const snapshot: CloudSnapshot = {
   workspaceId: "workspace-personal",
@@ -89,6 +90,57 @@ function mockJsonResponse(body: unknown, status = 200) {
 
 async function jsonBody(response: Response) {
   return (await response.json()) as unknown;
+}
+
+function base64ToBytes(value: string) {
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+
+  return bytes;
+}
+
+function bytesToBase64(bytes: ArrayBuffer) {
+  let binary = "";
+
+  for (const byte of new Uint8Array(bytes)) {
+    binary += String.fromCharCode(byte);
+  }
+
+  return btoa(binary);
+}
+
+async function svixSignature(secret: string, id: string, timestamp: string, body: string) {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    base64ToBytes(secret.replace(/^whsec_/, "")),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(`${id}.${timestamp}.${body}`));
+  return `v1,${bytesToBase64(signature)}`;
+}
+
+async function agentMailWebhookRequest(payload: unknown, options: { signature?: string } = {}) {
+  const body = JSON.stringify(payload);
+  const id = "msg_webhook_1";
+  const timestamp = Math.floor(Date.now() / 1000).toString();
+  const signature = options.signature ?? await svixSignature(testWebhookSecret, id, timestamp, body);
+
+  return new Request("https://expense.mac-tbo.com/api/agentmail/webhook", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "svix-id": id,
+      "svix-timestamp": timestamp,
+      "svix-signature": signature
+    },
+    body
+  });
 }
 
 describe("cloud API router", () => {
@@ -353,6 +405,90 @@ describe("cloud API router", () => {
 
     expect(response.status).toBe(502);
     await expect(jsonBody(response)).resolves.toEqual({ error: "Email sync failed." });
+  });
+
+  it("accepts a verified AgentMail webhook without an Access JWT and syncs server-side", async () => {
+    const repository = repositoryStub();
+    repository.getSnapshot.mockResolvedValue({
+      ...snapshot,
+      expenses: [],
+      receiptArtifacts: [],
+      reports: [{ id: "report-active", name: "Active", expenseIds: [], status: "Draft", dateRangeLabel: "", createdAt: "" }],
+      recordVersions: {
+        expenses: {},
+        reports: {},
+        receiptArtifacts: {},
+        statementCharges: {},
+        exportPackages: {}
+      }
+    });
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(mockJsonResponse({ messages: [{ message_id: "m1", subject: "Uber receipt", timestamp: "2026-06-03T14:00:00.000Z" }] }))
+      .mockResolvedValueOnce(mockJsonResponse({ message_id: "m1", text: "Uber\nJun 3, 2026\nTotal $18.42", timestamp: "2026-06-03T14:00:00.000Z" }));
+    vi.stubGlobal("fetch", fetcher);
+
+    const response = await handleApiRequest(
+      await agentMailWebhookRequest({
+        type: "event",
+        event_type: "message.received",
+        event_id: "event-1",
+        message: { inbox_id: "expense-me@agentmail.to", message_id: "m1" }
+      }),
+      {
+        ...env,
+        AGENTMAIL_API_KEY: "test-key",
+        AGENTMAIL_BASE_URL: "https://agentmail.test",
+        AGENTMAIL_WEBHOOK_SECRET: testWebhookSecret
+      },
+      { repository: repository as never }
+    );
+
+    expect(response.status).toBe(200);
+    await expect(jsonBody(response)).resolves.toEqual({ ok: true });
+    expect(repository.getOrCreateWorkspace).toHaveBeenCalledWith({
+      id: "agentmail:thiago@example.com",
+      email: "thiago@example.com"
+    });
+    expect(repository.upsertExpense).toHaveBeenCalledWith(
+      context,
+      expect.objectContaining({ id: "exp-email-m1", reportId: "report-active", sourceType: "Email" }),
+      {}
+    );
+  });
+
+  it("rejects an AgentMail webhook with a bad signature", async () => {
+    const repository = repositoryStub();
+
+    const response = await handleApiRequest(
+      await agentMailWebhookRequest(
+        { type: "event", event_type: "message.received", event_id: "event-1" },
+        { signature: "v1,bad-signature" }
+      ),
+      { ...env, AGENTMAIL_WEBHOOK_SECRET: testWebhookSecret },
+      { repository: repository as never }
+    );
+
+    expect(response.status).toBe(401);
+    await expect(jsonBody(response)).resolves.toEqual({ error: "Webhook verification failed." });
+    expect(repository.getOrCreateWorkspace).not.toHaveBeenCalled();
+  });
+
+  it("ignores verified AgentMail webhook events that are not new received messages", async () => {
+    const repository = repositoryStub();
+
+    const response = await handleApiRequest(
+      await agentMailWebhookRequest({
+        type: "event",
+        event_type: "message.delivered",
+        event_id: "event-1"
+      }),
+      { ...env, AGENTMAIL_WEBHOOK_SECRET: testWebhookSecret },
+      { repository: repository as never }
+    );
+
+    expect(response.status).toBe(200);
+    await expect(jsonBody(response)).resolves.toEqual({ ok: true, ignored: true });
+    expect(repository.getOrCreateWorkspace).not.toHaveBeenCalled();
   });
 
   it("maps version conflicts to 409 with the public message", async () => {

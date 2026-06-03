@@ -12,6 +12,7 @@ export interface CloudflareEnv {
   AGENTMAIL_API_KEY?: string;
   AGENTMAIL_INBOX_ID?: string;
   AGENTMAIL_BASE_URL?: string;
+  AGENTMAIL_WEBHOOK_SECRET?: string;
 }
 
 export interface AccessUser {

@@ -61,6 +61,7 @@ Target design:
 - AgentMail route errors should return stable public messages only; raw upstream errors stay server-side.
 - Current production AgentMail sync is intentionally single-user/prototype scope. It must move behind a real login-backed access boundary when shared cloud data replaces browser-local storage.
 - Future shared-data infrastructure should use free-tier services where possible; Cloudflare Workers/Pages, D1, R2, KV, and Access are preferred candidates before adding paid services.
+- V1.5 may expose only the AgentMail webhook path without a human Access JWT. That path must verify AgentMail/Svix webhook signatures with `AGENTMAIL_WEBHOOK_SECRET`, accept only `message.received` as a sync trigger, and keep manual `/api/email/sync` behind Cloudflare Access.
 
 ## V1.5 Shared Data Boundary
 
@@ -69,6 +70,8 @@ V1 stays live on Vercel at `https://expense-me-tbo.vercel.app` while V1.5 is bui
 V1.5 should use Cloudflare Access for the single-user login gate, Cloudflare D1 as the structured source of truth, and Cloudflare R2 for receipt/export artifacts. Browser storage should no longer be the durable source for Expenses, Expense Folders, statement charges, receipt artifacts, or Export Packages.
 
 Cloud snapshots carry cloud-only row version metadata in `recordVersions`. Existing-record mutation requests must send the expected version from the last loaded snapshot so V1.5 does not silently overwrite fresher data from another browser/device. Internal server workflows such as first migration and trusted sync repairs may use explicit force writes after loading current cloud state.
+
+AgentMail automatic intake should use the same idempotent server sync path as the Inbox button. The webhook only wakes the sync after a new received message; the app still fetches the full AgentMail message detail through the server-side API key before writing D1/R2 records.
 
 ## Review Gate
 

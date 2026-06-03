@@ -5,3 +5,12 @@ pages_build_output_dir = "dist"
 [vars]
 ENVIRONMENT = "production"
 APP_ORIGIN = "https://expense.mac-tbo.com"
+
+[[d1_databases]]
+binding = "EXPENSE_ME_DB"
+database_name = "expense-me-v15"
+database_id = "f7f52e75-3326-48ee-8559-0f99e4ea0eb4"
+
+[[r2_buckets]]
+binding = "EXPENSE_ME_ARTIFACTS"
+bucket_name = "expense-me-v15-artifacts"

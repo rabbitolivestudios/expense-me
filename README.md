@@ -24,6 +24,7 @@ The current app has the first V1 implementation of expenses, card reconciliation
 - Active Expense Folder selector on Inbox for the default capture/email/statement assignment, plus an Export Package folder selector for choosing what to export
 - Camera/image/PDF/manual intake with browser-local OCR and PDF text extraction
 - AgentMail inbox sync for `expense-me@agentmail.to`, including full message detail parsing, Uber pickup/dropoff descriptions, and repair of older summary-only imports
+- V1.5 AgentMail webhook intake for automatic received-message sync after Cloudflare deployment
 - Company-style expense type, sub-expense type, region, and country fields
 - Meal attendee count support
 - Card statement import and matching
@@ -90,8 +91,11 @@ npx wrangler pages secret put ACCESS_AUD --project-name expense-me-v15
 npx wrangler pages secret put ACCESS_ALLOWED_EMAIL --project-name expense-me-v15
 npx wrangler pages secret put AGENTMAIL_API_KEY --project-name expense-me-v15
 npx wrangler pages secret put AGENTMAIL_INBOX_ID --project-name expense-me-v15
+npx wrangler pages secret put AGENTMAIL_WEBHOOK_SECRET --project-name expense-me-v15
 ```
 
 After creating the D1 database, add the real `EXPENSE_ME_DB` binding and `EXPENSE_ME_ARTIFACTS` bucket binding to `wrangler.toml`, then apply migrations with `npm run cf:d1:migrations` and `npm run cf:d1:migrations:remote`.
+
+AgentMail automatic sync uses `POST /api/agentmail/webhook`. In the AgentMail dashboard, create a webhook endpoint only after the Cloudflare Pages deploy exists, subscribe to `message.received`, and copy the endpoint signing secret into `AGENTMAIL_WEBHOOK_SECRET`. If the endpoint uses `expense.mac-tbo.com`, configure Cloudflare Access to bypass only `/api/agentmail/webhook`; all human app/API routes remain Access-protected. Until that bypass exists, the same function can receive signed webhooks at the Pages default domain.
 
 Do not commit secret values, Cloudflare Access JWT audience values, AgentMail credentials, `.env` files, or local Wrangler state.
