@@ -6,8 +6,9 @@ export interface ParsedReceipt {
   confidence: number;
 }
 
-const currencyPattern = /\b(USD|EUR|GBP|CAD|MXN)\b/i;
-const moneyPattern = /\b(?:USD|EUR|GBP|CAD|MXN)?\s?\$?\s?((?:\d{1,3}(?:,\d{3})+|\d+)(?:[.,]\d{2}))\b/gi;
+const supportedCurrencyCodes = ["USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "SGD", "CNY", "HKD", "MXN", "BRL", "AED", "SAR", "SEK", "NOK", "DKK"];
+const currencyPattern = new RegExp(`\\b(${supportedCurrencyCodes.join("|")})\\b`, "i");
+const moneyPattern = new RegExp(`\\b(?:${supportedCurrencyCodes.join("|")})?\\s?[$€£¥]?\\s?((?:\\d{1,3}(?:,\\d{3})+|\\d+)(?:[.,]\\d{2}))\\b`, "gi");
 const monthNames: Record<string, string> = {
   jan: "01",
   january: "01",
@@ -38,14 +39,34 @@ const monthNames: Record<string, string> = {
 function normalizeDate(value: string) {
   const [month, day, year] = value.split("/");
   const normalizedYear = year.length === 2 ? `20${year}` : year;
-  return `${normalizedYear}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+  return normalizeDateParts(normalizedYear, month, day);
 }
 
 function normalizeMonthDate(month: string, day: string, year: string) {
   const normalizedMonth = monthNames[month.toLowerCase()];
   if (!normalizedMonth) return undefined;
 
-  return `${year}-${normalizedMonth}-${day.padStart(2, "0")}`;
+  return normalizeDateParts(year, normalizedMonth, day);
+}
+
+function normalizeDateParts(year: string, month: string, day: string) {
+  const yearNumber = Number(year);
+  const monthNumber = Number(month);
+  const dayNumber = Number(day);
+  const parsed = new Date(Date.UTC(yearNumber, monthNumber - 1, dayNumber));
+
+  if (
+    !Number.isInteger(yearNumber) ||
+    !Number.isInteger(monthNumber) ||
+    !Number.isInteger(dayNumber) ||
+    parsed.getUTCFullYear() !== yearNumber ||
+    parsed.getUTCMonth() !== monthNumber - 1 ||
+    parsed.getUTCDate() !== dayNumber
+  ) {
+    return undefined;
+  }
+
+  return `${year}-${String(monthNumber).padStart(2, "0")}-${String(dayNumber).padStart(2, "0")}`;
 }
 
 function parseDate(text: string) {
@@ -118,6 +139,15 @@ function parseMerchant(text: string, lines: string[]) {
   return lines.find((line) => !isNoiseLine(line));
 }
 
+function parseCurrency(text: string) {
+  const explicitCurrency = text.match(currencyPattern)?.[1]?.toUpperCase();
+  if (explicitCurrency) return explicitCurrency;
+  if (text.includes("€")) return "EUR";
+  if (text.includes("£")) return "GBP";
+  if (text.includes("¥")) return "JPY";
+  return "USD";
+}
+
 export function parseReceiptText(text: string): ParsedReceipt {
   const lines = text
     .split(/\r?\n/)
@@ -125,7 +155,7 @@ export function parseReceiptText(text: string): ParsedReceipt {
     .filter(Boolean);
   const date = parseDate(text);
   const amount = parseAmount(text);
-  const currency = text.match(currencyPattern)?.[1]?.toUpperCase() ?? (text.includes("$") ? "USD" : "USD");
+  const currency = parseCurrency(text);
 
   return {
     merchant: parseMerchant(text, lines),

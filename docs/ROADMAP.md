@@ -8,7 +8,7 @@ Build a mobile-first expense companion that captures work expenses, catches miss
 
 - Mobile PWA experience with Inbox, Capture, Cards, Reports, and Export.
 - Camera/image/PDF/manual intake.
-- AgentMail email intake for `expense-me@agentmail.to`.
+- AgentMail email intake for `expense-me@agentmail.to`, using full message detail instead of summary-only subject/from parsing.
 - Company-aligned fields:
   - expense type;
   - sub-expense type;
@@ -30,11 +30,12 @@ Build a mobile-first expense companion that captures work expenses, catches miss
 ## V1 Next Milestones
 
 1. Add image preprocessing before OCR: crop, rotate, contrast, resize, sharpen.
-2. Improve email attachment extraction beyond message summaries.
+2. Add an authenticated AgentMail sync boundary for the public PWA, such as a user session or sync passcode that is not bundled into browser code.
 3. Add optional low-cost LLM extraction behind a server API.
 4. Add confidence warnings for OCR/parsed fields.
 5. Add duplicate receipt detection across OCR text, merchant/date/amount, and card matches.
 6. Improve receipt review UX with side-by-side image/PDF preview and extracted fields.
+7. Move large receipt binaries out of localStorage into IndexedDB-backed artifact storage.
 
 ## V2 Goal
 

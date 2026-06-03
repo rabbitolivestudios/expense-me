@@ -15,8 +15,9 @@ export default async function handler(request, response) {
   try {
     response.status(200).json(resolvedMessageId ? await getAgentMailMessage(resolvedMessageId) : await listAgentMailMessages());
   } catch (error) {
+    console.error(resolvedMessageId ? "AgentMail message fetch failed" : "AgentMail sync failed", error);
     response.status(500).json({
-      error: error instanceof Error ? error.message : resolvedMessageId ? "AgentMail message fetch failed" : "AgentMail sync failed"
+      error: resolvedMessageId ? "AgentMail message fetch failed" : "AgentMail sync failed"
     });
   }
 }

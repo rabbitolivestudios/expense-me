@@ -37,6 +37,13 @@ Total $19.42
     expect(result.originalCurrency).toBe("USD");
   });
 
+  it("rejects invalid numeric receipt dates", () => {
+    const result = parseReceiptText("Hotel Chicago\n99/99/2026\nTotal USD 184.20");
+
+    expect(result.expenseDate).toBeUndefined();
+    expect(result.originalAmount).toBe(184.2);
+  });
+
   it("creates a review expense from extracted receipt text", () => {
     const expense = createExpenseFromExtractedText("exp-imported", "Taxi Parisien\n05/21/2026\nTotal EUR 42.00");
 
@@ -68,6 +75,8 @@ Total $19.42
     ["Conference Registration Fee\n05/21/2026\nTotal USD 250.00", "Other Expenses", "Registration Fees"],
     ["Training Fee\n05/21/2026\nTotal USD 75.00", "Other Expenses", "Training Fees"],
     ["Restaurant Tips\n05/21/2026\nTotal USD 8.00", "Other Expenses", "Tips"],
+    ["Las Vegas dinner restaurant\n05/21/2026\nTotal USD 48.00", "Meals", "Dinner"],
+    ["Gas station\n05/21/2026\nTotal USD 38.00", "Transport", "Fuel"],
     ["Uber\n05/21/2026\nTrip fare USD 18.00\nTip USD 3.00\nTotal USD 21.00", "Transport", "Taxi"]
   ])("categorizes %s", (text, expenseType, subExpenseType) => {
     const expense = createExpenseFromExtractedText(`exp-${subExpenseType}`, text);
@@ -149,5 +158,37 @@ describe("email receipt expense conversion", () => {
     expect(repaired.reportId).toBe("report-current");
     expect(repaired.statementChargeMatchId).toBe("charge-1");
     expect(repaired.receiptArtifactIds).toEqual(["art-existing"]);
+  });
+
+  it("does not repair an old email expense with lower-confidence replacement data", () => {
+    const existing: Expense = {
+      id: "exp-email-msg-2-example-com",
+      sourceType: "Email",
+      status: "Review",
+      expenseType: "Transport",
+      subExpenseType: "Taxi",
+      expenseDate: "2026-06-03",
+      region: "NAFTA",
+      country: "United States",
+      city: "",
+      merchant: "FW: [Business] Your Thursday evening trip with Uber",
+      description: "FW: [Business] Your Thursday evening trip with Uber",
+      paymentMethod: "Credit Card",
+      originalAmount: 0.01,
+      originalCurrency: "USD",
+      finalUsdAmount: 0.01,
+      receiptArtifactIds: ["art-existing"],
+      confidence: 0.5
+    };
+    const next: Expense = {
+      ...existing,
+      merchant: "Email receipt",
+      description: "Email receipt",
+      originalAmount: 12.34,
+      finalUsdAmount: 12.34,
+      confidence: 0.45
+    };
+
+    expect(shouldRepairEmailExpense(existing, next)).toBe(false);
   });
 });

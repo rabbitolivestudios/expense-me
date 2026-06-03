@@ -33,7 +33,7 @@ export function classifyExpenseText(text: string): ExpenseClassification {
     return { expenseType: "Stay", subExpenseType: "Bar/Mini Bar" };
   }
 
-  if (/hotel|lodging|inn|suite|resort/.test(normalized)) {
+  if (/\bhotel\b|\blodging\b|\binn\b|\bsuite\b|\bresort\b/.test(normalized)) {
     return { expenseType: "Stay", subExpenseType: "Hotel" };
   }
 
@@ -45,7 +45,7 @@ export function classifyExpenseText(text: string): ExpenseClassification {
     return { expenseType: "Transport", subExpenseType: "Rail" };
   }
 
-  if (/fuel|shell|gas|gasoline/.test(normalized)) {
+  if (/\bfuel\b|\bshell\b|\bgas\b|\bgasoline\b/.test(normalized)) {
     return { expenseType: "Transport", subExpenseType: "Fuel" };
   }
 

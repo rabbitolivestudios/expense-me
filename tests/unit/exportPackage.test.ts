@@ -65,6 +65,18 @@ describe("Export Package readiness", () => {
     expect(files["reconciliation-notes.txt"]).toContain("Export Package");
   });
 
+  it("neutralizes formula-like values in exported CSV cells", () => {
+    const files = buildExportPackageFiles({
+      report: { ...seedReports[0], name: "=Trip Folder", expenseIds: [seedExpenses[0].id] },
+      expenses: [{ ...seedExpenses[0], description: "=HYPERLINK(\"https://example.invalid\",\"click\")" }],
+      employeeName: "CASTRO Laurent",
+      reportReference: "EXP-1229"
+    });
+
+    expect(files["entry-spreadsheet.csv"]).toContain("'=Trip Folder");
+    expect(files["entry-spreadsheet.csv"]).toContain("'=HYPERLINK");
+  });
+
   it("builds a downloadable zip archive from the handoff files", async () => {
     const expenses = seedExpenses.map((expense) =>
       expense.id === "exp-fuel-training" ? { ...expense, declarationId: "decl-exp-fuel-training", status: "Ready" as const } : expense

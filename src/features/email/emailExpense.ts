@@ -115,12 +115,15 @@ export function shouldRepairEmailExpense(existing: Expense, next: Expense) {
   const subjectLikeText = `${existing.merchant ?? ""} ${existing.description}`.trim();
   const looksLikeForward = /^(fw|fwd|re):/i.test(subjectLikeText) || /<[^>]+@[^>]+>/.test(subjectLikeText);
   const fallbackAmount = existing.originalAmount === 0.01 && existing.confidence <= 0.5;
+  const nextHasReceiptFields = Boolean(next.merchant) && next.originalAmount > 0.01 && next.confidence >= existing.confidence;
   const betterParse = next.confidence > existing.confidence ||
-    next.originalAmount !== existing.originalAmount ||
-    next.expenseDate !== existing.expenseDate ||
-    next.merchant !== existing.merchant;
+    (nextHasReceiptFields && (
+      next.originalAmount !== existing.originalAmount ||
+      next.expenseDate !== existing.expenseDate ||
+      next.merchant !== existing.merchant
+    ));
 
-  return betterParse && (fallbackAmount || looksLikeForward);
+  return nextHasReceiptFields && betterParse && (fallbackAmount || looksLikeForward);
 }
 
 export function mergeEmailExpenseRepair(existing: Expense, next: Expense, receiptArtifactIds: string[]) {

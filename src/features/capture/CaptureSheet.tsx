@@ -29,7 +29,8 @@ const categoryChips = [
 ] as const satisfies ReadonlyArray<Pick<Expense, "expenseType" | "subExpenseType"> & { label: string }>;
 
 function nextId(prefix: string) {
-  return `${prefix}-${Date.now()}`;
+  const randomId = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `${prefix}-${randomId}`;
 }
 
 function fallbackTextFromFilename(file: File) {
@@ -224,7 +225,7 @@ export function CaptureSheet({ onClose, onExpenseCreated, onOpenCards, onSyncEma
 
     try {
       const count = await onSyncEmail();
-      setStatusMessage(count === 0 ? "No new email receipts found." : `${count} email receipt${count === 1 ? "" : "s"} added to Inbox.`);
+      setStatusMessage(count === 0 ? "No email receipt updates found." : `${count} email receipt${count === 1 ? "" : "s"} updated in Inbox.`);
     } catch {
       setStatusMessage("Email sync needs the local AgentMail server.");
     } finally {

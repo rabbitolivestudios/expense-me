@@ -38,6 +38,8 @@ Expected UI:
 
 Current intake uses browser-local text extraction plus deterministic parsing and keyword categorization. Camera/image uploads run OCR in the browser with Tesseract.js. PDFs use embedded PDF text first and fall back to OCR for scanned pages.
 
+AgentMail intake must parse full message detail (`text`, `html`, `extracted_text`, or `extracted_html`) rather than list summaries. Summary-only imports are allowed to be repaired only when the new parse is at least as confident and has concrete receipt fields, so a low-confidence reparse cannot overwrite existing financial data.
+
 Target design:
 
 - extract local text first from PDF/email/body;
@@ -51,6 +53,12 @@ Target design:
 - API keys stay in local `.env` or Vercel environment variables.
 - Do not commit `.env`, Vercel local state, build output, screenshots, or generated export packages.
 - OpenAI API usage, if added, should run server-side only so keys are never exposed in the browser.
+- AgentMail route errors should return stable public messages only; raw upstream errors stay server-side.
+- Production AgentMail sync still needs an explicit user-auth or sync-passcode decision before the API can be treated as private.
+
+## Review Gate
+
+Code changes should include app documentation updates when behavior changes. Run Clawpatch (`map`, `review`, `report`) before final commit/deploy and triage findings against V1 scope.
 
 ## Deployment
 

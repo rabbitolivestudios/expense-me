@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { buildExpenseFolderDateRangeLabel, expenseFolderDateRangeLabel } from "./domain/reportDates";
 import type { Expense, ReceiptArtifact, Report, StatementCharge } from "./domain/types";
 import { CaptureSheet } from "./features/capture/CaptureSheet";
@@ -126,6 +126,7 @@ export default function App() {
   const [selectedExpenseId, setSelectedExpenseId] = useState<string | null>(null);
   const selectedExpense = expenses.find((expense) => expense.id === selectedExpenseId);
   const { theme, toggleTheme } = useTheme();
+  const emailSyncPromiseRef = useRef<Promise<number> | null>(null);
 
   useEffect(() => {
     persistState({ expenses, receiptArtifacts, reports, statementCharges });
@@ -303,7 +304,7 @@ export default function App() {
     setScreen("Inbox");
   }
 
-  async function syncEmail() {
+  async function runEmailSync() {
     const messages = await fetchAgentMailMessages();
     const existingExpensesById = new Map(expenses.map((expense) => [expense.id, expense]));
     const emailBundles = messages.map(createExpenseFromEmailMessage);
@@ -341,6 +342,18 @@ export default function App() {
     }
 
     return newBundles.length + repairBundles.length;
+  }
+
+  function syncEmail() {
+    if (emailSyncPromiseRef.current) {
+      return emailSyncPromiseRef.current;
+    }
+
+    emailSyncPromiseRef.current = runEmailSync().finally(() => {
+      emailSyncPromiseRef.current = null;
+    });
+
+    return emailSyncPromiseRef.current;
   }
 
   function importStatementCharges(charges: StatementCharge[]) {

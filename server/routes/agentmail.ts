@@ -9,7 +9,8 @@ agentMailRouter.get("/messages", async (request, response) => {
   try {
     response.json(messageId ? await getAgentMailMessage(messageId) : await listAgentMailMessages());
   } catch (error) {
-    response.status(500).json({ error: error instanceof Error ? error.message : "AgentMail sync failed" });
+    console.error(messageId ? "AgentMail message fetch failed" : "AgentMail sync failed", error);
+    response.status(500).json({ error: messageId ? "AgentMail message fetch failed" : "AgentMail sync failed" });
   }
 });
 
@@ -17,6 +18,7 @@ agentMailRouter.get("/messages/:messageId", async (request, response) => {
   try {
     response.json(await getAgentMailMessage(request.params.messageId));
   } catch (error) {
-    response.status(500).json({ error: error instanceof Error ? error.message : "AgentMail message fetch failed" });
+    console.error("AgentMail message fetch failed", error);
+    response.status(500).json({ error: "AgentMail message fetch failed" });
   }
 });

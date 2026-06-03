@@ -146,7 +146,7 @@ export function InboxScreen({
 
     try {
       const count = await onSyncEmail();
-      setSyncStatus(count === 0 ? "Email synced. No new receipts." : `Email synced. ${count} new receipt${count === 1 ? "" : "s"}.`);
+      setSyncStatus(count === 0 ? "Email synced. No receipt updates." : `Email synced. ${count} receipt${count === 1 ? "" : "s"} updated.`);
     } catch {
       setSyncStatus("Email sync needs the local AgentMail server.");
     } finally {

@@ -163,7 +163,8 @@ function evidenceLabel(expense: Expense) {
 
 function csvCell(value: string | number | undefined) {
   const text = value === undefined ? "" : String(value);
-  return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  const safeText = /^\s*[=+\-@]/.test(text) ? `'${text}` : text;
+  return /[",\n\r]/.test(safeText) ? `"${safeText.replace(/"/g, '""')}"` : safeText;
 }
 
 function buildEntryCsv(report: Report, expenses: Expense[]) {
