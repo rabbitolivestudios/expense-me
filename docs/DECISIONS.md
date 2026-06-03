@@ -32,6 +32,7 @@ Expected UI:
 - choose the Active Expense Folder from Inbox so new capture, email sync, and statement-created expenses land in the intended folder by default;
 - assign from Inbox with a swipe-right action;
 - assign or change from the Expense Detail screen with a dropdown;
+- keep the Expense Folder membership synchronized when a missing-receipt declaration is created from an edited detail draft;
 - create a new Expense Folder when no suitable folder exists;
 - generate each Export Package from one selected Expense Folder, independent of the current Active Expense Folder.
 

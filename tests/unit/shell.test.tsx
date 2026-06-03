@@ -829,6 +829,23 @@ describe("mobile app shell", () => {
     expect(screen.getByRole("button", { name: "Generate Export Package" })).toBeEnabled();
   });
 
+  it("keeps Expense Folder membership in sync when creating a declaration after changing folders", async () => {
+    const user = userEvent.setup();
+    seedAppState();
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: /Shell/i }));
+    await user.selectOptions(screen.getByLabelText("Expense Folder"), "report-customer-visit");
+    await user.click(screen.getByRole("button", { name: "Create Declaration" }));
+
+    await waitFor(() => {
+      const stored = storedAppState();
+      expect(stored.expenses?.find((expense) => expense.id === "exp-fuel-training")?.reportId).toBe("report-customer-visit");
+      expect(stored.reports?.find((report) => report.id === "report-customer-visit")?.expenseIds).toContain("exp-fuel-training");
+      expect(stored.reports?.find((report) => report.id === "report-may-chicago")?.expenseIds).not.toContain("exp-fuel-training");
+    });
+  });
+
   it("selects which Expense Folder is used for the Export Package", async () => {
     const user = userEvent.setup();
     seedAppState();

@@ -450,6 +450,15 @@ export default function App() {
       status: "Ready"
     };
     updateExpenses((current) => current.map((item) => (item.id === expense.id ? updatedExpense : item)));
+    updateReports((current) =>
+      current.map((report) => ({
+        ...report,
+        expenseIds:
+          report.id === updatedExpense.reportId
+            ? [updatedExpense.id, ...report.expenseIds.filter((id) => id !== updatedExpense.id)]
+            : report.expenseIds.filter((id) => id !== updatedExpense.id)
+      })).map((report) => ({ ...report, dateRangeLabel: reportLabelForExpenseIds(report, report.expenseIds) }))
+    );
   }
 
   function addExpensesToCurrentReport(expenseIds: string[], reportId = currentActiveReportId) {
