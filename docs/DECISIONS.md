@@ -36,11 +36,11 @@ Expected UI:
 
 ## Intake Intelligence
 
-Current intake uses deterministic parsing and keyword categorization. OCR and LLM extraction are planned but not yet the source of truth.
+Current intake uses browser-local text extraction plus deterministic parsing and keyword categorization. Camera/image uploads run OCR in the browser with Tesseract.js. PDFs use embedded PDF text first and fall back to OCR for scanned pages.
 
 Target design:
 
-- extract local text first from PDF/email/body/filename;
+- extract local text first from PDF/email/body;
 - run OCR for camera images and scanned PDFs;
 - use a low-cost server-side LLM call only when local extraction is incomplete or low-confidence;
 - validate extracted categories against company dropdown options;

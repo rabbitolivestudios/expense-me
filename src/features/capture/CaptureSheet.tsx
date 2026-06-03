@@ -2,6 +2,7 @@ import { ArrowLeft, Camera, CreditCard, FileText, Keyboard, MailCheck } from "lu
 import { useState } from "react";
 import type { ArtifactType, Expense, IntakeSource, ReceiptArtifact } from "../../domain/types";
 import { createExpenseFromExtractedText } from "../extraction/extractionPipeline";
+import { extractReceiptTextFromFile, type ExtractionMethod } from "../extraction/fileTextExtraction";
 import "./capture.css";
 
 interface CaptureSheetProps {
@@ -15,9 +16,30 @@ function nextId(prefix: string) {
   return `${prefix}-${Date.now()}`;
 }
 
+function fallbackTextFromFilename(file: File) {
+  return file.name.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ").trim() || "Imported receipt";
+}
+
+function extractionLabel(method: ExtractionMethod) {
+  switch (method) {
+    case "ocr":
+      return "image OCR";
+    case "pdf-text":
+      return "PDF text";
+    case "pdf-ocr":
+      return "scanned PDF OCR";
+    case "text":
+      return "text file";
+    default:
+      return "manual review";
+  }
+}
+
 async function createExpenseFromFile(file: File, sourceType: IntakeSource) {
   const id = nextId("exp-upload");
-  const baseText = file.type.startsWith("text/") ? await file.text() : file.name.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ");
+  const extraction = await extractReceiptTextFromFile(file);
+  const extractedText = extraction.text;
+  const baseText = extractedText || fallbackTextFromFilename(file);
   const dataUrl = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
     reader.addEventListener("load", () => resolve(String(reader.result)));
@@ -37,7 +59,7 @@ async function createExpenseFromFile(file: File, sourceType: IntakeSource) {
     mimeType: file.type || "application/octet-stream",
     storageKey: `local/${id}/${file.name || "receipt"}`,
     createdAt: new Date().toISOString(),
-    extractedText: baseText,
+    extractedText,
     dataUrl
   };
 
@@ -47,7 +69,7 @@ async function createExpenseFromFile(file: File, sourceType: IntakeSource) {
       sourceType,
       status: "Review" as const,
       receiptArtifactIds: [artifact.id],
-      notes: `Imported from ${file.name}`
+      notes: `Imported from ${file.name || "receipt"} using ${extractionLabel(extraction.method)}.`
     },
     artifact
   };
@@ -80,8 +102,15 @@ export function CaptureSheet({ onClose, onExpenseCreated, onOpenCards, onSyncEma
 
   async function handleFile(file: File | undefined, sourceType: IntakeSource) {
     if (!file) return;
-    const imported = await createExpenseFromFile(file, sourceType);
-    onExpenseCreated(imported.expense, [imported.artifact]);
+    setStatusMessage(sourceType === "Camera" ? "Scanning receipt..." : "Reading receipt...");
+
+    try {
+      const imported = await createExpenseFromFile(file, sourceType);
+      onExpenseCreated(imported.expense, [imported.artifact]);
+      setStatusMessage("Receipt scanned. Review the extracted fields.");
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Receipt scan failed. Try again or enter it manually.");
+    }
   }
 
   async function checkEmail() {

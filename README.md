@@ -16,12 +16,12 @@ Expense Me is designed around three layers:
 - **Expense Folder**: the required business grouping for related expenses, such as a trip, training, customer visit, or monthly batch.
 - **Export Package**: the generated handoff file for one Expense Folder, including the entry spreadsheet, review notes, receipt copies, and missing-receipt declarations.
 
-The current app has the first V1 implementation of expenses, card reconciliation, and export packages. Expense Folder assignment is the next model upgrade and should become mandatory before an expense is considered export-ready.
+The current app has the first V1 implementation of expenses, card reconciliation, Expense Folders, browser-local receipt OCR/PDF extraction, and export packages.
 
 ## Current Capabilities
 
 - Mobile-first inbox, capture, cards, reports, and export screens
-- Camera/image/PDF/manual intake
+- Camera/image/PDF/manual intake with browser-local OCR and PDF text extraction
 - AgentMail inbox sync for `expense-me@agentmail.to`
 - Company-style expense type, sub-expense type, region, and country fields
 - Meal attendee count support

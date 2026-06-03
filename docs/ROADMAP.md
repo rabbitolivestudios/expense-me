@@ -24,17 +24,17 @@ Build a mobile-first expense companion that captures work expenses, catches miss
 - Missing receipt declaration support.
 - Export Package generation with spreadsheet, review notes, receipt copies, and declarations.
 - Expense deletion from Inbox swipe-left and Expense Detail.
+- Browser-local OCR for camera/image receipts.
+- PDF embedded-text extraction with scanned-PDF OCR fallback.
 
 ## V1 Next Milestones
 
-1. Add Expense Folders as mandatory business grouping.
-2. Add Inbox swipe-right assignment to Expense Folder.
-3. Add Expense Detail folder dropdown and quick-create folder flow.
-4. Make Export Package generation folder-based.
-5. Improve readiness messages so each blocker names the affected expense and folder.
-6. Wire OCR for camera images and scanned receipts.
-7. Improve PDF/email attachment extraction.
-8. Add optional low-cost LLM extraction behind a server API.
+1. Add image preprocessing before OCR: crop, rotate, contrast, resize, sharpen.
+2. Improve email attachment extraction beyond message summaries.
+3. Add optional low-cost LLM extraction behind a server API.
+4. Add confidence warnings for OCR/parsed fields.
+5. Add duplicate receipt detection across OCR text, merchant/date/amount, and card matches.
+6. Improve receipt review UX with side-by-side image/PDF preview and extracted fields.
 
 ## V2 Goal
 
