@@ -8,7 +8,7 @@ This file records product and technical decisions that should remain stable unle
 - **Business grouping name**: Expense Folder.
 - **Output name**: Export Package.
 
-Expense Folder is preferred over Project because the grouping may be a trip, training, customer visit, month-end batch, or one-off business purpose. Export Package is reserved for the generated handoff bundle sent for entry into the company expense system.
+Expense Folder is preferred because the grouping may be a trip, training, customer visit, month-end batch, or one-off business purpose. Export Package is reserved for the generated handoff bundle sent for entry into the company expense system.
 
 ## V1 Product Boundary
 
@@ -60,6 +60,12 @@ Target design:
 - AgentMail route errors should return stable public messages only; raw upstream errors stay server-side.
 - Current production AgentMail sync is intentionally single-user/prototype scope. It must move behind a real login-backed access boundary when shared cloud data replaces browser-local storage.
 - Future shared-data infrastructure should use free-tier services where possible; Cloudflare Workers/Pages, D1, R2, KV, and Access are preferred candidates before adding paid services.
+
+## V1.5 Shared Data Boundary
+
+V1 stays live on Vercel at `https://expense-me-tbo.vercel.app` while V1.5 is built separately under the Cloudflare-managed `mac-tbo.com` domain. The planned V1.5 hostname is `https://expense.mac-tbo.com`.
+
+V1.5 should use Cloudflare Access for the single-user login gate, Cloudflare D1 as the structured source of truth, and Cloudflare R2 for receipt/export artifacts. Browser storage should no longer be the durable source for Expenses, Expense Folders, statement charges, receipt artifacts, or Export Packages.
 
 ## Review Gate
 

@@ -30,7 +30,7 @@ Build a mobile-first expense companion that captures work expenses, catches miss
 ## V1 Next Milestones
 
 1. Add image preprocessing before OCR: crop, rotate, contrast, resize, sharpen.
-2. Move shared app data behind a proper user session on a free-tier cloud stack, with single-user support first and team workspace support deferred.
+2. Ship V1.5 shared data at `expense.mac-tbo.com` behind Cloudflare Access, using D1/R2 as the durable source while keeping the Vercel V1 app live as fallback.
 3. Add optional low-cost LLM extraction behind a server API.
 4. Add confidence warnings for OCR/parsed fields.
 5. Add duplicate receipt detection across OCR text, merchant/date/amount, and card matches.
@@ -39,7 +39,7 @@ Build a mobile-first expense companion that captures work expenses, catches miss
 
 ## V2 Goal
 
-Reduce or remove the manual secretary/company-app entry step.
+Reduce or remove the manual company-app entry step.
 
 ## V2 Scope Candidates
 
@@ -47,7 +47,7 @@ Reduce or remove the manual secretary/company-app entry step.
 - Browser-assisted entry into the company app when no official API is available.
 - Better card provider integrations.
 - Per-user settings for employee name, default region/country, preferred card, and common folders.
-- Approval workflow or secretary handoff status.
+- Approval workflow or handoff status.
 - Audit trail for generated Export Packages and submitted expenses.
 
 ## Deferred Until Needed
