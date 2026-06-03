@@ -80,6 +80,11 @@ The production app is deployed on Vercel at `expense-me-tbo.vercel.app`. AgentMa
 
 V1 remains live on Vercel at `expense-me-tbo.vercel.app` as the fallback production app. V1.5 runs separately at `expense.mac-tbo.com` behind Cloudflare Access, with shared app data stored in Cloudflare D1 and binary artifacts stored in Cloudflare R2.
 
+### V1.5 Operational Notes
+
+- 2026-06-03 mobile hotfix: the browser client calls `globalThis.fetch` through a wrapper for the default CloudRepository fetcher. This prevents iOS Safari/Chrome from invoking `fetch` with the repository instance as `this`, which surfaced as `Can only call Window.fetch on instances of Window` and also caused Inbox email sync to fail from the phone.
+- If a phone still shows that old fetch error after deployment, close/reopen the tab or hard-refresh the PWA so the service worker picks up the current bundle.
+
 Required Wrangler setup commands:
 
 ```bash
