@@ -1,5 +1,14 @@
 import { useEffect, useRef, useState } from "react";
-import { buildExpenseFolderDateRangeLabel, expenseFolderDateRangeLabel } from "./domain/reportDates";
+import {
+  cloneReports,
+  createDefaultReport,
+  createExpenseFolderRecord,
+  defaultFolderId,
+  normalizeExpensesWithReports,
+  syncReportsWithExpenses
+} from "./app/appState";
+import type { ExpenseFolderDates } from "./app/appState";
+import { buildExpenseFolderDateRangeLabel } from "./domain/reportDates";
 import type { Expense, ReceiptArtifact, Report, StatementCharge } from "./domain/types";
 import { CaptureSheet } from "./features/capture/CaptureSheet";
 import { fetchAgentMailMessages } from "./features/email/agentMailSync";
@@ -16,64 +25,12 @@ import type { ScreenName } from "./features/shell/BottomNav";
 import "./styles/app.css";
 
 const storageKey = "expense-me-v1-live-state";
-const defaultFolderId = "report-current";
-
-interface ExpenseFolderDates {
-  startDate?: string;
-  endDate?: string;
-}
 
 interface PersistedAppState {
   expenses: Expense[];
   receiptArtifacts: ReceiptArtifact[];
   reports: Report[];
   statementCharges: StatementCharge[];
-}
-
-function cloneReports(reports: Report[]) {
-  return reports.map((report) => ({ ...report, expenseIds: [...report.expenseIds] }));
-}
-
-function createDefaultReport(expenseIds: string[] = []): Report {
-  return {
-    id: defaultFolderId,
-    name: "Current Expense Folder",
-    dateRangeLabel: expenseIds.length > 0 ? "Ready for export package" : "Add expenses to this folder",
-    expenseIds,
-    status: "Draft",
-    createdAt: new Date().toISOString()
-  };
-}
-
-function reportForExpense(expense: Expense, reports: Report[]) {
-  return reports.find((report) => report.expenseIds.includes(expense.id));
-}
-
-function normalizeExpensesWithReports(expenses: Expense[], reports: Report[]) {
-  return expenses.map((expense) => {
-    if (expense.reportId && reports.some((report) => report.id === expense.reportId)) {
-      return expense;
-    }
-
-    const existingReport = reportForExpense(expense, reports);
-    if (existingReport) {
-      return { ...expense, reportId: existingReport.id };
-    }
-
-    return reports.length === 1 ? { ...expense, reportId: reports[0].id } : expense;
-  });
-}
-
-function syncReportsWithExpenses(reports: Report[], expenses: Expense[]) {
-  return reports.map((report) => {
-    const expenseIds = expenses.filter((expense) => expense.reportId === report.id).map((expense) => expense.id);
-
-    return {
-      ...report,
-      expenseIds,
-      dateRangeLabel: expenseIds.length > 0 || report.startDate || report.endDate ? expenseFolderDateRangeLabel(report) : "Add expenses to this folder"
-    };
-  });
 }
 
 function loadPersistedState(): PersistedAppState | undefined {
@@ -108,10 +65,6 @@ function persistState(state: PersistedAppState) {
   } catch {
     // Local persistence is best-effort for private browsing or restricted storage.
   }
-}
-
-function safeId(value: string) {
-  return value.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").slice(0, 64) || `${Date.now()}`;
 }
 
 export default function App() {
@@ -177,21 +130,8 @@ export default function App() {
   }
 
   function createExpenseFolder(name: string, dates: ExpenseFolderDates = {}) {
-    const trimmedName = name.trim();
-    if (!trimmedName) return undefined;
-    const startDate = dates.startDate || undefined;
-    const endDate = dates.endDate || startDate;
-
-    const report: Report = {
-      id: `report-${safeId(trimmedName)}-${Date.now()}`,
-      name: trimmedName,
-      startDate,
-      endDate,
-      dateRangeLabel: buildExpenseFolderDateRangeLabel(startDate, endDate),
-      expenseIds: [],
-      status: "Draft",
-      createdAt: new Date().toISOString()
-    };
+    const report = createExpenseFolderRecord(name, dates);
+    if (!report) return undefined;
 
     setReports((current) => [report, ...current]);
     return report;
