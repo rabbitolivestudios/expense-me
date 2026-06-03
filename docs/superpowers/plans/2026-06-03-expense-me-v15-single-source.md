@@ -1217,7 +1217,7 @@ git commit -m "feat: add v1 local snapshot migration"
 - Modify: `README.md`
 - Modify: `docs/DECISIONS.md`
 
-- [ ] **Step 1: Merge the V1 hotfix line**
+- [x] **Step 1: Merge the V1 hotfix line**
 
 Run:
 
@@ -1227,7 +1227,7 @@ git merge origin/main --no-edit
 
 Expected: conflicts are likely in `src/App.tsx`, `src/app/appState.ts`, `README.md`, `docs/DECISIONS.md`, `tests/unit/inbox.test.tsx`, and `tests/unit/shell.test.tsx`.
 
-- [ ] **Step 2: Resolve conflicts preserving both sides**
+- [x] **Step 2: Resolve conflicts preserving both sides**
 
 Keep all V1.5 Cloudflare files and cloud contracts from this branch. Also keep the V1 hotfix behavior from `origin/main`:
 
@@ -1240,7 +1240,7 @@ Keep all V1.5 Cloudflare files and cloud contracts from this branch. Also keep t
 
 The resolved `src/app/appState.ts` must contain reusable helpers for `reportLabelForExpenseIds`, active-folder-safe normalization, and collision-resistant Expense Folder creation so Task 8 can reuse them from the cloud hook.
 
-- [ ] **Step 3: Verify the merge**
+- [x] **Step 3: Verify the merge**
 
 Run:
 
@@ -1253,7 +1253,7 @@ git diff --check
 
 Expected: V1 hotfix tests and V1.5 migration/cloud tests all pass.
 
-- [ ] **Step 4: Commit the merge**
+- [x] **Step 4: Commit the merge**
 
 Run:
 
