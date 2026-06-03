@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { artifactObjectKey, dataUrlToBytes, loadArtifactDataUrl, storeArtifactData } from "../../src/cloudflare/artifactStore";
 import { D1ExpenseMeRepository } from "../../src/cloudflare/d1Repository";
 import type { CloudflareEnv, WorkspaceContext } from "../../src/cloudflare/types";
-import type { ReceiptArtifact } from "../../src/domain/types";
+import type { ExportPackage, ReceiptArtifact } from "../../src/domain/types";
 import { seedArtifacts, seedExpenses, seedReports, seedStatementCharges } from "../fixtures";
 
 function statement(options: {
@@ -54,12 +54,22 @@ describe("D1 Expense Me repository", () => {
   });
 
   it("decodes listed payload rows into a normalized cloud snapshot", async () => {
+    const exportPackage: ExportPackage = {
+      id: "export-package-1",
+      reportId: seedReports[0].id,
+      generatedAt: "2026-06-03T18:00:00.000Z",
+      reviewPdfName: "review-report.pdf",
+      spreadsheetName: "expense-entry.csv",
+      receiptsZipName: "receipts.zip",
+      declarationPdfNames: ["missing-receipt-declaration.pdf"],
+      reconciliationNotesName: "reconciliation-notes.txt"
+    };
     const db = createDb((sql) => {
       if (sql.includes("FROM expenses")) return statement({ all: [encodedRow(seedExpenses[0])] });
       if (sql.includes("FROM expense_folders")) return statement({ all: [encodedRow(seedReports[0])] });
       if (sql.includes("FROM receipt_artifacts")) return statement({ all: [encodedRow(seedArtifacts[0])] });
       if (sql.includes("FROM statement_charges")) return statement({ all: [encodedRow(seedStatementCharges[0])] });
-      if (sql.includes("FROM export_packages")) return statement({ all: [] });
+      if (sql.includes("FROM export_packages")) return statement({ all: [encodedRow(exportPackage)] });
       return statement();
     });
     const repo = new D1ExpenseMeRepository({ EXPENSE_ME_DB: db } as unknown as CloudflareEnv);
@@ -73,7 +83,7 @@ describe("D1 Expense Me repository", () => {
     expect(snapshot.reports[0]).toMatchObject({ id: seedReports[0].id, expenseIds: [seedExpenses[0].id] });
     expect(snapshot.receiptArtifacts).toEqual([seedArtifacts[0]]);
     expect(snapshot.statementCharges).toEqual([seedStatementCharges[0]]);
-    expect(snapshot.exportPackages).toEqual([]);
+    expect(snapshot.exportPackages).toEqual([exportPackage]);
   });
 
   it("strips receipt artifact dataUrl before storing payload_json", async () => {
