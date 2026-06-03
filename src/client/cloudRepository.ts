@@ -27,7 +27,11 @@ async function readApiJson<T>(response: Response): Promise<T> {
 }
 
 export class CloudRepository {
-  constructor(private readonly fetcher: typeof fetch = fetch) {}
+  private readonly fetcher: typeof fetch;
+
+  constructor(fetcher?: typeof fetch) {
+    this.fetcher = fetcher ?? ((input, init) => globalThis.fetch(input, init));
+  }
 
   async bootstrap(): Promise<CloudSnapshot> {
     const body = await readApiJson<ApiSnapshotBody>(await this.fetcher("/api/bootstrap"));

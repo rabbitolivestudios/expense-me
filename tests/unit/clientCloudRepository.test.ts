@@ -44,6 +44,22 @@ function requestBody(init?: RequestInit) {
 }
 
 describe("client CloudRepository", () => {
+  it("uses the default browser fetch without rebinding it to the repository instance", async () => {
+    const fetcher = vi.fn(function (this: unknown) {
+      if (this instanceof CloudRepository) {
+        throw new Error("fetch was called with the repository as this");
+      }
+
+      return Promise.resolve(jsonResponse({ snapshot }));
+    });
+    vi.stubGlobal("fetch", fetcher);
+    const repository = new CloudRepository();
+
+    await expect(repository.bootstrap()).resolves.toEqual(snapshot);
+
+    expect(fetcher).toHaveBeenCalledWith("/api/bootstrap", undefined);
+  });
+
   it("bootstrap calls /api/bootstrap and returns the cloud snapshot", async () => {
     const fetcher = vi.fn().mockResolvedValue(jsonResponse({ snapshot }));
     const repository = new CloudRepository(fetcher);
