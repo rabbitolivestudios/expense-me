@@ -15,6 +15,7 @@ interface ExpenseDetailScreenProps {
   expense: Expense;
   onBack: () => void;
   onCreateDeclaration: (expense: Expense) => void;
+  onCreateExpenseFolder: (name: string, dates?: { startDate?: string; endDate?: string }) => Report | undefined;
   onDelete: (expenseId: string) => void;
   reports: Report[];
   onSave: (expense: Expense) => void;
@@ -67,15 +68,17 @@ function getValidationErrors(expense: Expense): DetailFieldErrors {
   return errors;
 }
 
-export function ExpenseDetailScreen({ expense, onBack, onCreateDeclaration, onDelete, reports, onSave }: ExpenseDetailScreenProps) {
+export function ExpenseDetailScreen({ expense, onBack, onCreateDeclaration, onCreateExpenseFolder, onDelete, reports, onSave }: ExpenseDetailScreenProps) {
   const [draft, setDraft] = useState<Expense>(expense);
   const [showValidation, setShowValidation] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [newFolderName, setNewFolderName] = useState("");
 
   useEffect(() => {
     setDraft(expense);
     setShowValidation(false);
     setConfirmingDelete(false);
+    setNewFolderName("");
   }, [expense]);
 
   const needsDeclaration = draft.receiptArtifactIds.length === 0 && !draft.declarationId;
@@ -129,6 +132,14 @@ export function ExpenseDetailScreen({ expense, onBack, onCreateDeclaration, onDe
       status: draft.receiptArtifactIds.length > 0 || draft.declarationId ? "Ready" : draft.status
     };
     onSave(saved);
+  }
+
+  function createAndSelectFolder() {
+    const report = onCreateExpenseFolder(newFolderName, { startDate: draft.expenseDate, endDate: draft.expenseDate });
+    if (!report) return;
+
+    setDraft((current) => ({ ...current, reportId: report.id }));
+    setNewFolderName("");
   }
 
   const subExpenseTypeOptions = getSubExpenseTypeOptions(draft.expenseType);
@@ -194,6 +205,20 @@ export function ExpenseDetailScreen({ expense, onBack, onCreateDeclaration, onDe
           </select>
           <FieldError field="reportId" />
         </label>
+        <div className="detail-folder-create">
+          <label>
+            <span>New Expense Folder</span>
+            <input
+              aria-label="New Expense Folder"
+              value={newFolderName}
+              onChange={(event) => setNewFolderName(event.target.value)}
+              placeholder="Trip, training, customer visit"
+            />
+          </label>
+          <button type="button" disabled={!newFolderName.trim()} onClick={createAndSelectFolder}>
+            Create and Select Expense Folder
+          </button>
+        </div>
         <label className="detail-field">
           <FieldLabel>Expense type</FieldLabel>
           <select

@@ -1,37 +1,53 @@
 import { useState } from "react";
 import { ArrowLeft, CheckCircle2, FolderPlus, Pencil, Save, Trash2, X } from "lucide-react";
+import { expenseFolderDateRangeLabel } from "../../domain/reportDates";
 import type { Report } from "../../domain/types";
+
+interface ExpenseFolderDates {
+  startDate?: string;
+  endDate?: string;
+}
 
 interface ReportsScreenProps {
   reports: Report[];
   onBack: () => void;
-  onCreateReport: (name: string) => void;
+  onCreateReport: (name: string, dates?: ExpenseFolderDates) => void;
   onDeleteReport: (reportId: string) => void;
-  onRenameReport: (reportId: string, name: string) => void;
+  onRenameReport: (reportId: string, name: string, dates?: ExpenseFolderDates) => void;
 }
 
 export function ReportsScreen({ reports, onBack, onCreateReport, onDeleteReport, onRenameReport }: ReportsScreenProps) {
   const [newFolderName, setNewFolderName] = useState("");
+  const [newStartDate, setNewStartDate] = useState("");
+  const [newEndDate, setNewEndDate] = useState("");
   const [editingReportId, setEditingReportId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState("");
+  const [editingStartDate, setEditingStartDate] = useState("");
+  const [editingEndDate, setEditingEndDate] = useState("");
 
   function createFolder() {
     const trimmedName = newFolderName.trim();
     if (!trimmedName) return;
 
-    onCreateReport(trimmedName);
+    onCreateReport(trimmedName, { startDate: newStartDate, endDate: newEndDate });
     setNewFolderName("");
+    setNewStartDate("");
+    setNewEndDate("");
   }
 
   function startRename(report: Report) {
     setEditingReportId(report.id);
     setEditingName(report.name);
+    setEditingStartDate(report.startDate ?? "");
+    setEditingEndDate(report.endDate ?? "");
   }
 
   function saveRename(reportId: string) {
-    onRenameReport(reportId, editingName);
+    onRenameReport(reportId, editingName, { startDate: editingStartDate, endDate: editingEndDate });
     setEditingReportId(null);
     setEditingName("");
+    setEditingStartDate("");
+    setEditingEndDate("");
   }
 
   return (
@@ -56,6 +72,24 @@ export function ReportsScreen({ reports, onBack, onCreateReport, onDeleteReport,
             placeholder="Trip, training, customer visit"
           />
         </label>
+        <label>
+          <span>Start date</span>
+          <input
+            aria-label="New Expense Folder start date"
+            type="date"
+            value={newStartDate}
+            onChange={(event) => setNewStartDate(event.target.value)}
+          />
+        </label>
+        <label>
+          <span>End date</span>
+          <input
+            aria-label="New Expense Folder end date"
+            type="date"
+            value={newEndDate}
+            onChange={(event) => setNewEndDate(event.target.value)}
+          />
+        </label>
         <button type="button" onClick={createFolder} disabled={!newFolderName.trim()} aria-label="Create Expense Folder">
           <FolderPlus aria-hidden="true" />
         </button>
@@ -76,6 +110,18 @@ export function ReportsScreen({ reports, onBack, onCreateReport, onDeleteReport,
                     value={editingName}
                     onChange={(event) => setEditingName(event.target.value)}
                   />
+                  <input
+                    aria-label="Expense Folder start date"
+                    type="date"
+                    value={editingStartDate}
+                    onChange={(event) => setEditingStartDate(event.target.value)}
+                  />
+                  <input
+                    aria-label="Expense Folder end date"
+                    type="date"
+                    value={editingEndDate}
+                    onChange={(event) => setEditingEndDate(event.target.value)}
+                  />
                   <div>
                     <button type="button" aria-label="Save Expense Folder name" onClick={() => saveRename(report.id)} disabled={!editingName.trim()}>
                       <Save aria-hidden="true" />
@@ -88,7 +134,7 @@ export function ReportsScreen({ reports, onBack, onCreateReport, onDeleteReport,
               ) : (
                 <>
                   <h2>{report.name}</h2>
-                  <p>{report.dateRangeLabel}</p>
+                  <p>{expenseFolderDateRangeLabel(report)}</p>
                 </>
               )}
             </div>

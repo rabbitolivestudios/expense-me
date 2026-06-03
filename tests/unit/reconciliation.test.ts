@@ -84,6 +84,49 @@ describe("reconciliation", () => {
     ]);
   });
 
+  it.each([
+    [
+      "missing amount",
+      ["Transaction Date,Description,Amount", "2026-05-21,TAXI PARISIEN,"].join("\n"),
+      "Statement CSV row 2: Amount is required."
+    ],
+    [
+      "invalid amount",
+      ["Transaction Date,Description,Amount", "2026-05-21,TAXI PARISIEN,not-money"].join("\n"),
+      "Statement CSV row 2: Amount must be a valid number."
+    ],
+    [
+      "missing transaction date",
+      ["Transaction Date,Description,Amount", ",TAXI PARISIEN,42"].join("\n"),
+      "Statement CSV row 2: Transaction date is required."
+    ],
+    [
+      "missing description",
+      ["Transaction Date,Description,Amount", "2026-05-21,,42"].join("\n"),
+      "Statement CSV row 2: Description is required."
+    ],
+    [
+      "non-USD without final USD or FX rate",
+      ["Transaction Date,Description,Amount,Currency", "2026-05-21,TAXI PARISIEN,42,EUR"].join("\n"),
+      "Statement CSV row 2: Final USD or FX Rate is required for non-USD charges."
+    ]
+  ])("rejects statement CSV rows with %s", (_name, csv, message) => {
+    expect(() => parseStatementCsv(csv, "statement-1", "Corporate Visa")).toThrow(message);
+  });
+
+  it("computes final USD for non-USD statement rows when an FX rate is supplied", () => {
+    const csv = [
+      "Transaction Date,Description,Amount,Currency,FX Rate,Fee",
+      "2026-05-21,TAXI PARISIEN,42,EUR,1.1,1.25"
+    ].join("\n");
+
+    const [charge] = parseStatementCsv(csv, "statement-1", "Corporate Visa");
+
+    expect(charge.finalUsdAmount).toBe(47.45);
+    expect(charge.fxRate).toBe(1.1);
+    expect(charge.foreignTransactionFee).toBe(1.25);
+  });
+
   it("turns unmatched statement charges into reviewable missed-charge expenses", () => {
     const charge: StatementCharge = {
       id: "charge-hotel",
@@ -104,6 +147,34 @@ describe("reconciliation", () => {
     expect(expense.subExpenseType).toBe("Hotel");
     expect(expense.status).toBe("Declare");
     expect(expense.statementChargeMatchId).toBe("charge-hotel");
+  });
+
+  it.each([
+    ["AMTRAK RAIL", "Transport", "Rail"],
+    ["AIRPORT TOLL ROAD", "Transport", "Toll"],
+    ["HOTEL ROOM SERVICE", "Stay", "Room Service"],
+    ["HOTEL LAUNDRY", "Stay", "Laundry"],
+    ["CLIENT DRINKS", "Meals", "Drinks"],
+    ["CONFERENCE REGISTRATION", "Other Expenses", "Registration Fees"],
+    ["TRAINING FEES", "Other Expenses", "Training Fees"],
+    ["RESTAURANT TIPS", "Other Expenses", "Tips"]
+  ])("classifies unmatched statement charge %s", (description, expenseType, subExpenseType) => {
+    const charge: StatementCharge = {
+      id: `charge-${description.replace(/\s+/g, "-").toLowerCase()}`,
+      statementImportId: "statement-1",
+      cardLabel: "Corporate Visa",
+      transactionDate: "2026-05-23",
+      description,
+      originalAmount: 42,
+      originalCurrency: "USD",
+      finalUsdAmount: 42,
+      matchStatus: "Unmatched"
+    };
+
+    const expense = createExpenseFromStatementCharge(charge);
+
+    expect(expense.expenseType).toBe(expenseType);
+    expect(expense.subExpenseType).toBe(subExpenseType);
   });
 
   it("reconciles imported statements into matched and newly created expenses", () => {

@@ -1,6 +1,6 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import App from "../../src/App";
 import { seedArtifacts, seedExpenses, seedReports, seedStatementCharges } from "../fixtures";
 
@@ -31,6 +31,10 @@ function seedFolderOnlyState() {
 }
 
 describe("mobile app shell", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("renders five bottom navigation actions with Capture centered", () => {
     render(<App />);
 
@@ -60,9 +64,12 @@ describe("mobile app shell", () => {
 
     await user.click(screen.getByRole("button", { name: "Reports" }));
     await user.type(screen.getByLabelText("New Expense Folder"), "June customer visits");
+    await user.type(screen.getByLabelText("New Expense Folder start date"), "2026-06-10");
+    await user.type(screen.getByLabelText("New Expense Folder end date"), "2026-06-12");
     await user.click(screen.getByRole("button", { name: "Create Expense Folder" }));
 
     expect(screen.getByText("June customer visits")).toBeInTheDocument();
+    expect(screen.getByText("June 10, 2026 to June 12, 2026")).toBeInTheDocument();
   });
 
   it("renames and deletes an empty Expense Folder", async () => {
@@ -77,9 +84,12 @@ describe("mobile app shell", () => {
     const renameInput = screen.getByLabelText("Expense Folder name");
     await user.clear(renameInput);
     await user.type(renameInput, "June customer visits updated");
+    await user.type(screen.getByLabelText("Expense Folder start date"), "2026-06-14");
+    await user.type(screen.getByLabelText("Expense Folder end date"), "2026-06-14");
     await user.click(screen.getByRole("button", { name: "Save Expense Folder name" }));
 
     expect(screen.getByText("June customer visits updated")).toBeInTheDocument();
+    expect(screen.getByText("June 14, 2026")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Delete Expense Folder June customer visits updated" }));
     expect(screen.queryByText("June customer visits updated")).not.toBeInTheDocument();
@@ -170,6 +180,44 @@ describe("mobile app shell", () => {
     expect(screen.getByLabelText("Expense Folder")).toHaveValue("report-customer-visit");
   });
 
+  it("creates and selects a new Expense Folder from inbox assignment", async () => {
+    const user = userEvent.setup();
+    seedAppState();
+    render(<App />);
+
+    const expenseCard = screen.getByRole("button", { name: /Avec River North/i });
+
+    fireEvent.touchStart(expenseCard, { touches: [{ clientX: 120 }] });
+    fireEvent.touchMove(expenseCard, { touches: [{ clientX: 240 }] });
+    fireEvent.touchEnd(expenseCard, { changedTouches: [{ clientX: 240 }] });
+
+    await user.click(screen.getByRole("button", { name: "Assign Expense Folder for Avec River North" }));
+    const dialog = screen.getByRole("dialog", { name: "Assign Expense Folder" });
+    await user.type(within(dialog).getByLabelText("New Expense Folder"), "June customer dinner");
+    await user.click(within(dialog).getByRole("button", { name: "Create and Select Expense Folder" }));
+    await user.click(within(dialog).getByRole("button", { name: "Assign Folder" }));
+
+    await user.click(screen.getByRole("button", { name: /Avec River North/i }));
+    expect(screen.getByLabelText("Expense Folder")).toHaveDisplayValue("June customer dinner");
+  });
+
+  it("creates and selects a new Expense Folder from expense details", async () => {
+    const user = userEvent.setup();
+    seedAppState();
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: /Avec River North/i }));
+    await user.type(screen.getByLabelText("New Expense Folder"), "Conference follow-up");
+    await user.click(screen.getByRole("button", { name: "Create and Select Expense Folder" }));
+
+    expect(screen.getByLabelText("Expense Folder")).toHaveDisplayValue("Conference follow-up");
+
+    await user.click(screen.getByRole("button", { name: "Save Expense" }));
+    await user.click(screen.getByRole("button", { name: /Avec River North/i }));
+
+    expect(screen.getByLabelText("Expense Folder")).toHaveDisplayValue("Conference follow-up");
+  });
+
   it("reveals a trash action with swipe left and deletes after confirmation", async () => {
     const user = userEvent.setup();
     seedAppState();
@@ -190,6 +238,28 @@ describe("mobile app shell", () => {
 
     expect(screen.queryByRole("button", { name: /Avec River North/i })).not.toBeInTheDocument();
     expect(screen.getByText("Needs attention")).toBeInTheDocument();
+  });
+
+  it("renames an expense from the inbox long-press action sheet", async () => {
+    vi.useFakeTimers();
+    seedAppState();
+    render(<App />);
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: /Avec River North/i }), { clientX: 140 });
+    act(() => {
+      vi.advanceTimersByTime(650);
+    });
+
+    const actions = screen.getByRole("dialog", { name: "Expense actions" });
+    fireEvent.click(within(actions).getByRole("button", { name: "Rename Avec River North" }));
+
+    const renameDialog = screen.getByRole("dialog", { name: "Rename expense" });
+    const nameInput = within(renameDialog).getByLabelText("Expense name");
+    fireEvent.change(nameInput, { target: { value: "Avec client dinner" } });
+    fireEvent.click(within(renameDialog).getByRole("button", { name: "Save Name" }));
+
+    expect(screen.queryByRole("button", { name: /Avec River North/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Avec client dinner/i })).toBeInTheDocument();
   });
 
   it("deletes an expense from the detail screen after confirmation", async () => {
@@ -240,5 +310,19 @@ describe("mobile app shell", () => {
     await user.click(screen.getByRole("button", { name: "Export" }));
 
     expect(screen.getByRole("button", { name: "Generate Export Package" })).toBeEnabled();
+  });
+
+  it("selects which Expense Folder is used for the Export Package", async () => {
+    const user = userEvent.setup();
+    seedAppState();
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "Export" }));
+    expect(screen.getByRole("heading", { name: "Chicago Training - May 2026" })).toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText("Export Package Expense Folder"), "report-customer-visit");
+
+    expect(screen.getByRole("heading", { name: "Customer Visit - Paris" })).toBeInTheDocument();
+    expect(screen.getByText("May 21, 2026")).toBeInTheDocument();
   });
 });

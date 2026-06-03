@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { buildExpenseFolderDateRangeLabel, expenseFolderDateRangeLabel } from "./domain/reportDates";
 import type { Expense, ReceiptArtifact, Report, StatementCharge } from "./domain/types";
 import { CaptureSheet } from "./features/capture/CaptureSheet";
 import { fetchAgentMailMessages, type AgentMailMessageSummary } from "./features/email/agentMailSync";
@@ -15,6 +16,11 @@ import "./styles/app.css";
 
 const storageKey = "expense-me-v1-live-state";
 const defaultFolderId = "report-current";
+
+interface ExpenseFolderDates {
+  startDate?: string;
+  endDate?: string;
+}
 
 interface PersistedAppState {
   expenses: Expense[];
@@ -64,7 +70,7 @@ function syncReportsWithExpenses(reports: Report[], expenses: Expense[]) {
     return {
       ...report,
       expenseIds,
-      dateRangeLabel: expenseIds.length > 0 ? report.dateRangeLabel : "Add expenses to this folder"
+      dateRangeLabel: expenseIds.length > 0 || report.startDate || report.endDate ? expenseFolderDateRangeLabel(report) : "Add expenses to this folder"
     };
   });
 }
@@ -179,27 +185,62 @@ export default function App() {
     );
   }
 
-  function createExpenseFolder(name: string) {
+  function renameExpense(expenseId: string, name: string) {
     const trimmedName = name.trim();
     if (!trimmedName) return;
+
+    setExpenses((current) =>
+      current.map((expense) =>
+        expense.id === expenseId
+          ? expense.merchant
+            ? { ...expense, merchant: trimmedName }
+            : { ...expense, description: trimmedName }
+          : expense
+      )
+    );
+  }
+
+  function createExpenseFolder(name: string, dates: ExpenseFolderDates = {}) {
+    const trimmedName = name.trim();
+    if (!trimmedName) return undefined;
+    const startDate = dates.startDate || undefined;
+    const endDate = dates.endDate || startDate;
 
     const report: Report = {
       id: `report-${safeId(trimmedName)}-${Date.now()}`,
       name: trimmedName,
-      dateRangeLabel: "Add expenses to this folder",
+      startDate,
+      endDate,
+      dateRangeLabel: buildExpenseFolderDateRangeLabel(startDate, endDate),
       expenseIds: [],
       status: "Draft",
       createdAt: new Date().toISOString()
     };
 
     setReports((current) => [report, ...current]);
+    return report;
   }
 
-  function renameExpenseFolder(reportId: string, name: string) {
+  function renameExpenseFolder(reportId: string, name: string, dates?: ExpenseFolderDates) {
     const trimmedName = name.trim();
     if (!trimmedName) return;
 
-    setReports((current) => current.map((report) => (report.id === reportId ? { ...report, name: trimmedName } : report)));
+    setReports((current) =>
+      current.map((report) => {
+        if (report.id !== reportId) return report;
+
+        const startDate = dates ? dates.startDate || undefined : report.startDate;
+        const endDate = dates ? dates.endDate || startDate : report.endDate;
+
+        return {
+          ...report,
+          name: trimmedName,
+          startDate,
+          endDate,
+          dateRangeLabel: buildExpenseFolderDateRangeLabel(startDate, endDate)
+        };
+      })
+    );
   }
 
   function deleteExpenseFolder(reportId: string) {
@@ -338,6 +379,7 @@ export default function App() {
           expense={selectedExpense}
           onBack={() => setSelectedExpenseId(null)}
           onCreateDeclaration={createDeclaration}
+          onCreateExpenseFolder={createExpenseFolder}
           onDelete={deleteExpense}
           reports={reports}
           onSave={saveExpense}
@@ -348,6 +390,8 @@ export default function App() {
           expenses={expenses}
           onCapture={() => changeScreen("Capture")}
           onAssignExpenseFolder={assignExpenseFolder}
+          onCreateExpenseFolder={createExpenseFolder}
+          onRenameExpense={renameExpense}
           onOpenCards={() => changeScreen("Cards")}
           onOpenExpense={setSelectedExpenseId}
           onDeleteExpense={deleteExpense}
@@ -381,7 +425,7 @@ export default function App() {
       )}
       {!selectedExpense && screen === "Export" && (
         <ExportScreen
-          report={reports[0]}
+          reports={reports}
           expenses={expenses}
           receiptArtifacts={receiptArtifacts}
           onBack={() => changeScreen("Inbox")}

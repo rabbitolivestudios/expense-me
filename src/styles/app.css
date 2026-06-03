@@ -326,9 +326,13 @@
 
 .folder-create {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 50px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 50px;
   gap: 10px;
   align-items: end;
+}
+
+.folder-create label:first-child {
+  grid-column: 1 / -1;
 }
 
 .folder-create label {
@@ -355,6 +359,7 @@
 
 .folder-create button {
   min-height: 46px;
+  width: 50px;
   border-radius: 8px;
   background: var(--brand-sky-blue);
   color: var(--brand-white);

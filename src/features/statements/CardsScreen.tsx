@@ -28,6 +28,19 @@ function importId() {
   return `statement-${Date.now()}`;
 }
 
+function readFileText(file: File) {
+  if (typeof file.text === "function") {
+    return file.text();
+  }
+
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener("load", () => resolve(String(reader.result ?? "")));
+    reader.addEventListener("error", () => reject(new Error("Statement CSV import failed. Check the file and try again.")));
+    reader.readAsText(file);
+  });
+}
+
 export function CardsScreen({
   cardLabel = "Corporate Visa",
   statementCharges = [],
@@ -39,19 +52,25 @@ export function CardsScreen({
   const unmatched = useMemo(() => charges.filter((charge) => charge.matchStatus === "Unmatched"), [charges]);
   const matched = useMemo(() => charges.filter((charge) => charge.matchStatus === "Matched"), [charges]);
 
-  async function handleStatementUpload(file?: File) {
+  async function handleStatementUpload(file?: File, input?: HTMLInputElement) {
     if (!file) return;
 
-    const csv = await file.text();
-    const parsedCharges = parseStatementCsv(csv, importId(), cardLabel);
-    const summary = onStatementImported?.(parsedCharges);
+    try {
+      const csv = await readFileText(file);
+      const parsedCharges = parseStatementCsv(csv, importId(), cardLabel);
+      const summary = onStatementImported?.(parsedCharges);
 
-    if (summary) {
-      setStatusMessage(
-        `${summary.importedCount} charges imported. ${summary.matchedCount} updated, ${summary.createdCount} added to Inbox.`
-      );
-    } else {
-      setStatusMessage(`${parsedCharges.length} charges imported.`);
+      if (summary) {
+        setStatusMessage(
+          `${summary.importedCount} charges imported. ${summary.matchedCount} updated, ${summary.createdCount} added to Inbox.`
+        );
+      } else {
+        setStatusMessage(`${parsedCharges.length} charges imported.`);
+      }
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Statement CSV import failed. Check the file and try again.");
+    } finally {
+      if (input) input.value = "";
     }
   }
 
@@ -69,9 +88,10 @@ export function CardsScreen({
           <Upload aria-hidden="true" />
           <input
             accept=".csv,text/csv"
+            aria-label="Statement CSV file"
             className="visually-hidden"
             type="file"
-            onChange={(event) => void handleStatementUpload(event.target.files?.[0])}
+            onChange={(event) => void handleStatementUpload(event.currentTarget.files?.[0], event.currentTarget)}
           />
         </label>
       </header>

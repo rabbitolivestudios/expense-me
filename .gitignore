@@ -4,6 +4,7 @@
 
 .vercel/
 .superpowers/
+.clawpatch/
 
 node_modules/
 dist/

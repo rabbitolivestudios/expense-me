@@ -67,6 +67,8 @@ export interface Expense {
 export interface Report {
   id: string;
   name: string;
+  startDate?: string;
+  endDate?: string;
   dateRangeLabel: string;
   expenseIds: string[];
   status: "Draft" | "Ready" | "Exported";

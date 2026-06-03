@@ -57,6 +57,51 @@ function normalizeDate(value?: string) {
   return `${fullYear}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
 }
 
+function rowError(index: number, message: string) {
+  return new Error(`Statement CSV row ${index + 2}: ${message}`);
+}
+
+function requireText(row: CsvRow, index: number, headers: string[], label: string) {
+  const value = readField(row, headers);
+  if (!value) throw rowError(index, `${label} is required.`);
+  return value;
+}
+
+function parseRequiredMoney(row: CsvRow, index: number, headers: string[], label: string) {
+  const rawValue = requireText(row, index, headers, label);
+  const parsed = parseMoney(rawValue);
+  if (parsed === undefined) throw rowError(index, `${label} must be a valid number.`);
+  return Math.abs(parsed);
+}
+
+function parseOptionalMoney(row: CsvRow, index: number, headers: string[], label: string) {
+  const rawValue = readField(row, headers);
+  if (!rawValue) return undefined;
+
+  const parsed = parseMoney(rawValue);
+  if (parsed === undefined) throw rowError(index, `${label} must be a valid number.`);
+  return Math.abs(parsed);
+}
+
+function parseOptionalNumberField(row: CsvRow, index: number, headers: string[], label: string) {
+  const rawValue = readField(row, headers);
+  if (!rawValue) return undefined;
+
+  const parsed = parseOptionalNumber(rawValue);
+  if (parsed === undefined) throw rowError(index, `${label} must be a valid number.`);
+  return parsed;
+}
+
+function normalizeRequiredDate(row: CsvRow, index: number) {
+  const rawValue = requireText(row, index, transactionDateHeaders, "Transaction date");
+  const normalized = normalizeDate(rawValue);
+  if (!normalized || Number.isNaN(Date.parse(normalized))) {
+    throw rowError(index, "Transaction date must be a valid date.");
+  }
+
+  return normalized;
+}
+
 export function parseStatementCsv(csv: string, statementImportId: string, cardLabel: string): StatementCharge[] {
   const parsed = Papa.parse<CsvRow>(csv, {
     header: true,
@@ -69,10 +114,24 @@ export function parseStatementCsv(csv: string, statementImportId: string, cardLa
   }
 
   return parsed.data.map((row, index) => {
-    const originalAmount = Math.abs(parseMoney(readField(row, amountHeaders)) ?? 0);
-    const finalUsdAmount = Math.abs(parseMoney(readField(row, finalUsdHeaders)) ?? originalAmount);
-    const transactionDate = normalizeDate(readField(row, transactionDateHeaders)) || new Date().toISOString().slice(0, 10);
+    const originalAmount = parseRequiredMoney(row, index, amountHeaders, "Amount");
+    const originalCurrency = (readField(row, currencyHeaders) || "USD").toUpperCase();
+    const finalUsdFromCsv = parseOptionalMoney(row, index, finalUsdHeaders, "Final USD");
+    const fxRate = parseOptionalNumberField(row, index, fxRateHeaders, "FX Rate");
+    const foreignTransactionFee = parseOptionalMoney(row, index, feeHeaders, "Foreign transaction fee");
+    const finalUsdAmount =
+      finalUsdFromCsv ??
+      (originalCurrency === "USD"
+        ? originalAmount
+        : fxRate
+          ? Number((originalAmount * fxRate + (foreignTransactionFee ?? 0)).toFixed(2))
+          : undefined);
+    const transactionDate = normalizeRequiredDate(row, index);
     const postedDate = normalizeDate(readField(row, postedDateHeaders));
+
+    if (finalUsdAmount === undefined) {
+      throw rowError(index, "Final USD or FX Rate is required for non-USD charges.");
+    }
 
     return {
       id: `${statementImportId}-${index}`,
@@ -80,12 +139,12 @@ export function parseStatementCsv(csv: string, statementImportId: string, cardLa
       cardLabel,
       transactionDate,
       postedDate,
-      description: readField(row, descriptionHeaders) || "Imported statement charge",
+      description: requireText(row, index, descriptionHeaders, "Description"),
       originalAmount,
-      originalCurrency: (readField(row, currencyHeaders) || "USD").toUpperCase(),
+      originalCurrency,
       finalUsdAmount,
-      fxRate: parseOptionalNumber(readField(row, fxRateHeaders)),
-      foreignTransactionFee: parseOptionalNumber(readField(row, feeHeaders)),
+      fxRate,
+      foreignTransactionFee,
       matchStatus: "Unmatched"
     };
   });

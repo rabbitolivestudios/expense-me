@@ -121,6 +121,8 @@ export const seedReports: Report[] = [
   {
     id: "report-may-chicago",
     name: "Chicago Training - May 2026",
+    startDate: "2026-05-20",
+    endDate: "2026-05-22",
     dateRangeLabel: "May 20-22, 2026",
     expenseIds: ["exp-meal-client-dinner", "exp-fuel-training"],
     status: "Draft",
@@ -129,6 +131,8 @@ export const seedReports: Report[] = [
   {
     id: "report-customer-visit",
     name: "Customer Visit - Paris",
+    startDate: "2026-05-21",
+    endDate: "2026-05-21",
     dateRangeLabel: "May 21, 2026",
     expenseIds: ["exp-taxi-paris"],
     status: "Draft",

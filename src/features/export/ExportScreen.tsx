@@ -1,18 +1,39 @@
 import { ArrowLeft, CheckCircle2, Clock3, PackageCheck } from "lucide-react";
 import { useState } from "react";
+import { expenseFolderDateRangeLabel } from "../../domain/reportDates";
 import type { Expense, ReceiptArtifact, Report } from "../../domain/types";
 import { buildExportPackageZip, buildReadinessChecklist } from "./exportPackage";
 import "./export.css";
 
 interface ExportScreenProps {
-  report: Report;
+  reports: Report[];
   expenses: Expense[];
   receiptArtifacts: ReceiptArtifact[];
   onBack: () => void;
 }
 
-export function ExportScreen({ report, expenses, receiptArtifacts, onBack }: ExportScreenProps) {
+export function ExportScreen({ reports, expenses, receiptArtifacts, onBack }: ExportScreenProps) {
+  const [selectedReportId, setSelectedReportId] = useState(reports[0]?.id ?? "");
   const [statusMessage, setStatusMessage] = useState("");
+  const report = reports.find((item) => item.id === selectedReportId) ?? reports[0];
+  if (!report) {
+    return (
+      <main className="screen export-screen">
+        <header className="screen-header">
+          <button type="button" aria-label="Back to inbox" onClick={onBack}>
+            <ArrowLeft aria-hidden="true" />
+          </button>
+          <span>Export Package</span>
+        </header>
+        <div className="export-empty">
+          <PackageCheck aria-hidden="true" />
+          <h2>Create an Expense Folder first</h2>
+          <p>Each Export Package needs one Expense Folder with its expenses and receipt evidence.</p>
+        </div>
+      </main>
+    );
+  }
+
   const checklist = buildReadinessChecklist(report, expenses);
   const hasExpenses = report.expenseIds.length > 0;
   const ready = hasExpenses && checklist.length === 0;
@@ -53,9 +74,27 @@ export function ExportScreen({ report, expenses, receiptArtifacts, onBack }: Exp
         <PackageCheck aria-hidden="true" />
         <div>
           <h2>{report.name}</h2>
-          <p>{report.dateRangeLabel}</p>
+          <p>{expenseFolderDateRangeLabel(report)}</p>
         </div>
       </div>
+
+      <label className="export-folder-select">
+        <span>Expense Folder</span>
+        <select
+          aria-label="Export Package Expense Folder"
+          value={report.id}
+          onChange={(event) => {
+            setSelectedReportId(event.target.value);
+            setStatusMessage("");
+          }}
+        >
+          {reports.map((item) => (
+            <option key={item.id} value={item.id}>
+              {item.name}
+            </option>
+          ))}
+        </select>
+      </label>
 
       <div className="export-checklist" aria-label="Export readiness">
         {ready && (

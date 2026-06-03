@@ -18,8 +18,20 @@ describe("Export Package readiness", () => {
     expect(checklist).toContainEqual({
       kind: "field",
       expenseId: unassignedExpense.id,
-      message: "Expense Folder is required."
+      message: "Avec River North (2026-05-20): Expense Folder is required."
     });
+  });
+
+  it("names the affected expense in field readiness blockers", () => {
+    const incompleteExpense = { ...seedExpenses[0], city: "" };
+    const checklist = buildReadinessChecklist({ ...seedReports[0], expenseIds: [incompleteExpense.id] }, [incompleteExpense]);
+
+    expect(checklist).toContainEqual({
+      kind: "field",
+      expenseId: incompleteExpense.id,
+      message: "Avec River North (2026-05-20): City is required."
+    });
+    expect(checklist.some((item) => item.message === "city is required.")).toBe(false);
   });
 
   it("builds handoff files with corporate fields and declaration text", () => {
@@ -35,6 +47,8 @@ describe("Export Package readiness", () => {
 
     expect(files["entry-spreadsheet.csv"]).toContain("Expense type,Sub expense type,Expense date,Region,Country,City");
     expect(files["entry-spreadsheet.csv"]).toContain("Transport,Fuel,2026-05-20,NAFTA,United States,Chicago");
+    expect(files["entry-spreadsheet.csv"]).toContain("Receipt attached: art-restaurant-receipt");
+    expect(files["entry-spreadsheet.csv"]).toContain("Declaration: decl-exp-fuel-training");
     expect(files["review-report.txt"]).toContain("Chicago Training - May 2026");
     expect(files["declarations/decl-exp-fuel-training.txt"]).toContain("Gas roundtrip Schererville / Training");
     expect(files["reconciliation-notes.txt"]).toContain("Export Package");

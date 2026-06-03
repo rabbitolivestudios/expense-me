@@ -1,4 +1,5 @@
 import type { Expense, StatementCharge } from "../../domain/types";
+import { classifyExpenseText } from "../extraction/categorizeExpense";
 
 const strongMatchThreshold = 75;
 
@@ -46,42 +47,8 @@ function statementExpenseId(charge: StatementCharge) {
   return `exp-statement-${charge.id.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "")}`;
 }
 
-function classifyStatementCharge(charge: StatementCharge): Pick<Expense, "expenseType" | "subExpenseType"> {
-  const description = charge.description.toLowerCase();
-
-  if (/hotel|lodging|inn|suite|resort/.test(description)) {
-    return { expenseType: "Stay", subExpenseType: "Hotel" };
-  }
-
-  if (/taxi|uber|lyft|cab/.test(description)) {
-    return { expenseType: "Transport", subExpenseType: "Taxi" };
-  }
-
-  if (/fuel|shell|gas|gasoline/.test(description)) {
-    return { expenseType: "Transport", subExpenseType: "Fuel" };
-  }
-
-  if (/air|airline|flight/.test(description)) {
-    return { expenseType: "Transport", subExpenseType: "Air" };
-  }
-
-  if (/rail|train/.test(description)) {
-    return { expenseType: "Transport", subExpenseType: "Rail" };
-  }
-
-  if (/parking/.test(description)) {
-    return { expenseType: "Transport", subExpenseType: "Parking" };
-  }
-
-  if (/restaurant|cafe|coffee|breakfast|brunch|lunch|dinner|meal/.test(description)) {
-    return { expenseType: "Meals", subExpenseType: "Lunch" };
-  }
-
-  return { expenseType: "Other Expenses", subExpenseType: "Any other expenses" };
-}
-
 export function createExpenseFromStatementCharge(charge: StatementCharge): Expense {
-  const classification = classifyStatementCharge(charge);
+  const classification = classifyExpenseText(charge.description);
 
   return {
     id: statementExpenseId(charge),

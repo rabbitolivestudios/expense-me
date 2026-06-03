@@ -1,4 +1,4 @@
-import { CreditCard, FileText, FolderInput, MailCheck, ReceiptText, RotateCw, Trash2 } from "lucide-react";
+import { CreditCard, FileText, FolderInput, MailCheck, Pencil, ReceiptText, RotateCw, Trash2, X } from "lucide-react";
 import { useRef, useState } from "react";
 import type { Expense, Report } from "../../domain/types";
 import "./inbox.css";
@@ -9,6 +9,8 @@ interface InboxScreenProps {
   onOpenExpense: (expenseId: string) => void;
   onDeleteExpense: (expenseId: string) => void;
   onAssignExpenseFolder: (expenseId: string, reportId: string) => void;
+  onCreateExpenseFolder: (name: string, dates?: { startDate?: string; endDate?: string }) => Report | undefined;
+  onRenameExpense: (expenseId: string, name: string) => void;
   onCapture: () => void;
   onOpenCards: () => void;
   onSyncEmail: () => Promise<number>;
@@ -43,6 +45,8 @@ export function InboxScreen({
   onOpenExpense,
   onDeleteExpense,
   onAssignExpenseFolder,
+  onCreateExpenseFolder,
+  onRenameExpense,
   onCapture,
   onOpenCards,
   onSyncEmail
@@ -54,7 +58,12 @@ export function InboxScreen({
   const [confirmingExpenseId, setConfirmingExpenseId] = useState<string | null>(null);
   const [assigningExpenseId, setAssigningExpenseId] = useState<string | null>(null);
   const [assignDraftReportId, setAssignDraftReportId] = useState("");
+  const [newFolderName, setNewFolderName] = useState("");
+  const [actionMenuExpenseId, setActionMenuExpenseId] = useState<string | null>(null);
+  const [renamingExpenseId, setRenamingExpenseId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
   const swipeState = useRef<SwipeState | null>(null);
+  const longPressTimer = useRef<number | null>(null);
   const suppressNextOpen = useRef<string | null>(null);
   const attention = expenses.filter((expense) => expense.status !== "Ready");
   const ready = expenses.filter((expense) => expense.status === "Ready");
@@ -81,11 +90,34 @@ export function InboxScreen({
     swipeState.current = { expenseId, startX: clientX };
   }
 
+  function clearLongPressTimer() {
+    if (longPressTimer.current) {
+      window.clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  }
+
+  function startLongPress(expenseId: string) {
+    clearLongPressTimer();
+    longPressTimer.current = window.setTimeout(() => {
+      setActionMenuExpenseId(expenseId);
+      setRevealedExpenseId(null);
+      setRevealedAction(null);
+      setConfirmingExpenseId(null);
+      setAssigningExpenseId(null);
+      suppressNextOpen.current = expenseId;
+    }, 600);
+  }
+
   function moveSwipe(expenseId: string, clientX: number) {
     const swipe = swipeState.current;
     if (!swipe || swipe.expenseId !== expenseId) return;
 
     const deltaX = clientX - swipe.startX;
+    if (Math.abs(deltaX) > 10) {
+      clearLongPressTimer();
+    }
+
     if (deltaX < -48) {
       setRevealedExpenseId(expenseId);
       setRevealedAction("delete");
@@ -104,6 +136,7 @@ export function InboxScreen({
 
   function endSwipe() {
     swipeState.current = null;
+    clearLongPressTimer();
   }
 
   function touchClientX(event: React.TouchEvent<HTMLButtonElement>) {
@@ -121,6 +154,7 @@ export function InboxScreen({
       setRevealedAction(null);
       setConfirmingExpenseId(null);
       setAssigningExpenseId(null);
+      setActionMenuExpenseId(null);
       return;
     }
 
@@ -134,9 +168,15 @@ export function InboxScreen({
     setConfirmingExpenseId(null);
   }
 
+  function openAssignFromActions(expense: Expense) {
+    setActionMenuExpenseId(null);
+    startAssign(expense);
+  }
+
   function startAssign(expense: Expense) {
     setAssigningExpenseId(expense.id);
     setAssignDraftReportId(expense.reportId ?? reports[0]?.id ?? "");
+    setNewFolderName("");
   }
 
   function confirmAssign(expenseId: string) {
@@ -149,11 +189,37 @@ export function InboxScreen({
     suppressNextOpen.current = null;
   }
 
+  function createAndSelectFolder(expenseDate: string) {
+    const report = onCreateExpenseFolder(newFolderName, { startDate: expenseDate, endDate: expenseDate });
+    if (!report) return;
+
+    setAssignDraftReportId(report.id);
+    setNewFolderName("");
+  }
+
+  function startRename(expense: Expense) {
+    setActionMenuExpenseId(null);
+    setRenamingExpenseId(expense.id);
+    setRenameDraft(titleForExpense(expense));
+  }
+
+  function confirmRename(expenseId: string) {
+    const trimmedName = renameDraft.trim();
+    if (!trimmedName) return;
+
+    onRenameExpense(expenseId, trimmedName);
+    setRenamingExpenseId(null);
+    setRenameDraft("");
+    suppressNextOpen.current = null;
+  }
+
   function renderExpense(expense: Expense) {
     const isDeleteRevealed = revealedExpenseId === expense.id && revealedAction === "delete";
     const isAssignRevealed = revealedExpenseId === expense.id && revealedAction === "assign";
     const isConfirming = confirmingExpenseId === expense.id;
     const isAssigning = assigningExpenseId === expense.id;
+    const isActionMenuOpen = actionMenuExpenseId === expense.id;
+    const isRenaming = renamingExpenseId === expense.id;
     const title = titleForDelete(expense);
 
     return (
@@ -186,7 +252,10 @@ export function InboxScreen({
           className="expense-card action-card"
           type="button"
           onClick={() => openExpense(expense.id)}
-          onPointerDown={(event) => startSwipe(expense.id, event.clientX)}
+          onPointerDown={(event) => {
+            startSwipe(expense.id, event.clientX);
+            startLongPress(expense.id);
+          }}
           onPointerMove={(event) => moveSwipe(expense.id, event.clientX)}
           onPointerUp={endSwipe}
           onPointerCancel={endSwipe}
@@ -217,6 +286,47 @@ export function InboxScreen({
             <small>{expense.expenseDate}</small>
           </span>
         </button>
+        {isActionMenuOpen && (
+          <div className="expense-action-sheet" role="dialog" aria-label="Expense actions">
+            <div>
+              <strong>{title}</strong>
+              <button type="button" aria-label="Close expense actions" onClick={() => setActionMenuExpenseId(null)}>
+                <X aria-hidden="true" />
+              </button>
+            </div>
+            <button type="button" aria-label={`Assign Expense Folder for ${title}`} onClick={() => openAssignFromActions(expense)}>
+              <FolderInput aria-hidden="true" />
+              Assign Folder
+            </button>
+            <button type="button" aria-label={`Rename ${title}`} onClick={() => startRename(expense)}>
+              <Pencil aria-hidden="true" />
+              Rename
+            </button>
+            <button type="button" aria-label={`Delete ${title}`} onClick={() => {
+              setActionMenuExpenseId(null);
+              setConfirmingExpenseId(expense.id);
+            }}>
+              <Trash2 aria-hidden="true" />
+              Delete
+            </button>
+          </div>
+        )}
+        {isRenaming && (
+          <div className="expense-rename-panel" role="dialog" aria-label="Rename expense">
+            <label>
+              <span>Expense name</span>
+              <input aria-label="Expense name" value={renameDraft} onChange={(event) => setRenameDraft(event.target.value)} />
+            </label>
+            <div>
+              <button type="button" onClick={() => setRenamingExpenseId(null)}>
+                Cancel
+              </button>
+              <button className="confirm-rename" type="button" disabled={!renameDraft.trim()} onClick={() => confirmRename(expense.id)}>
+                Save Name
+              </button>
+            </div>
+          </div>
+        )}
         {isConfirming && (
           <div className="delete-confirmation" role="alertdialog" aria-label="Delete expense">
             <strong>Delete expense?</strong>
@@ -246,8 +356,25 @@ export function InboxScreen({
                 ))}
               </select>
             </label>
-            <div>
-              <button type="button" onClick={() => setAssigningExpenseId(null)}>
+            <div className="folder-quick-create">
+              <label>
+                <span>New Expense Folder</span>
+                <input
+                  aria-label="New Expense Folder"
+                  value={newFolderName}
+                  onChange={(event) => setNewFolderName(event.target.value)}
+                  placeholder="Trip, training, customer visit"
+                />
+              </label>
+              <button type="button" disabled={!newFolderName.trim()} onClick={() => createAndSelectFolder(expense.expenseDate)}>
+                Create and Select Expense Folder
+              </button>
+            </div>
+            <div className="assignment-actions">
+              <button type="button" onClick={() => {
+                setAssigningExpenseId(null);
+                setNewFolderName("");
+              }}>
                 Cancel
               </button>
               <button className="confirm-assign" type="button" disabled={!assignDraftReportId} onClick={() => confirmAssign(expense.id)}>

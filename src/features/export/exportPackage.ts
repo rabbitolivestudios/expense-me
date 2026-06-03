@@ -1,4 +1,5 @@
 import JSZip from "jszip";
+import { expenseFolderDateRangeLabel } from "../../domain/reportDates";
 import type { Expense, ReceiptArtifact, Report } from "../../domain/types";
 import { isMealExpenseType } from "../../domain/options";
 import { createDeclarationText } from "../declarations/declaration";
@@ -22,35 +23,56 @@ const requiredFields: Array<keyof Pick<Expense, "expenseType" | "subExpenseType"
   "originalCurrency"
 ];
 
+const requiredFieldLabels: Record<(typeof requiredFields)[number], string> = {
+  expenseType: "Expense type",
+  subExpenseType: "Sub expense type",
+  expenseDate: "Expense date",
+  region: "Region",
+  country: "Country",
+  city: "City",
+  description: "Expense description",
+  paymentMethod: "Payment method",
+  originalAmount: "Amount",
+  originalCurrency: "Currency"
+};
+
+function expenseTitle(expense: Expense) {
+  return expense.merchant || expense.description || expense.id;
+}
+
+function readinessMessage(expense: Expense, message: string) {
+  return `${expenseTitle(expense)} (${expense.expenseDate}): ${message}`;
+}
+
 export function buildReadinessChecklist(report: Report, expenses: Expense[]): ReadinessItem[] {
   const reportExpenses = expenses.filter((expense) => report.expenseIds.includes(expense.id));
   const items: ReadinessItem[] = [];
 
   for (const expense of reportExpenses) {
     if (expense.reportId !== report.id) {
-      items.push({ kind: "field", expenseId: expense.id, message: "Expense Folder is required." });
+      items.push({ kind: "field", expenseId: expense.id, message: readinessMessage(expense, "Expense Folder is required.") });
     }
 
     for (const field of requiredFields) {
       if (!expense[field]) {
-        items.push({ kind: "field", expenseId: expense.id, message: `${field} is required.` });
+        items.push({ kind: "field", expenseId: expense.id, message: readinessMessage(expense, `${requiredFieldLabels[field]} is required.`) });
       }
     }
 
     if (isMealExpenseType(expense.expenseType) && !expense.mealPeopleCount) {
-      items.push({ kind: "field", expenseId: expense.id, message: "Meal expenses require number of people." });
+      items.push({ kind: "field", expenseId: expense.id, message: readinessMessage(expense, "Meal expenses require number of people.") });
     }
 
     if (expense.receiptArtifactIds.length === 0 && !expense.declarationId) {
-      items.push({ kind: "declaration", expenseId: expense.id, message: "Missing receipt declaration is required." });
+      items.push({ kind: "declaration", expenseId: expense.id, message: readinessMessage(expense, "Missing receipt declaration is required.") });
     }
 
     if (expense.status === "FX" && !expense.finalUsdAmount) {
-      items.push({ kind: "fx", expenseId: expense.id, message: "Confirm final USD amount and FX details." });
+      items.push({ kind: "fx", expenseId: expense.id, message: readinessMessage(expense, "Confirm final USD amount and FX details.") });
     }
 
     if (expense.status === "Duplicate") {
-      items.push({ kind: "duplicate", expenseId: expense.id, message: "Duplicate must be resolved or acknowledged." });
+      items.push({ kind: "duplicate", expenseId: expense.id, message: readinessMessage(expense, "Duplicate must be resolved or acknowledged.") });
     }
   }
 
@@ -123,6 +145,18 @@ function dataUrlToBytes(dataUrl: string) {
   return bytes;
 }
 
+function evidenceLabel(expense: Expense) {
+  if (expense.receiptArtifactIds.length > 0) {
+    return `Receipt attached: ${expense.receiptArtifactIds.join("; ")}`;
+  }
+
+  if (expense.declarationId) {
+    return `Declaration: ${expense.declarationId}`;
+  }
+
+  return "Missing evidence";
+}
+
 function csvCell(value: string | number | undefined) {
   const text = value === undefined ? "" : String(value);
   return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
@@ -147,7 +181,7 @@ function buildEntryCsv(report: Report, expenses: Expense[]) {
       expense.foreignTransactionFee?.toFixed(2),
       expense.mealPeopleCount,
       expense.attendeeNames?.join("; "),
-      expense.receiptArtifactIds.length > 0 ? expense.receiptArtifactIds.join("; ") : expense.declarationId ?? ""
+      evidenceLabel(expense)
     ].map(csvCell).join(",")
   );
 
@@ -157,14 +191,14 @@ function buildEntryCsv(report: Report, expenses: Expense[]) {
 function buildReviewReport(report: Report, expenses: Expense[]) {
   return [
     `Export Package Review: ${report.name}`,
-    `Date range: ${report.dateRangeLabel}`,
+    `Date range: ${expenseFolderDateRangeLabel(report)}`,
     "",
     ...expenses.flatMap((expense) => [
       `${expense.expenseDate} | ${expense.expenseType} / ${expense.subExpenseType}`,
       `${expense.description}`,
       `${expense.originalAmount.toFixed(2)} ${expense.originalCurrency}${expense.finalUsdAmount ? ` | Final USD ${expense.finalUsdAmount.toFixed(2)}` : ""}`,
       `Location: ${expense.region}, ${expense.country}, ${expense.city}`,
-      `Evidence: ${expense.receiptArtifactIds.length > 0 ? expense.receiptArtifactIds.join(", ") : expense.declarationId ?? "Missing"}`,
+      `Evidence: ${evidenceLabel(expense)}`,
       ""
     ])
   ].join("\n");

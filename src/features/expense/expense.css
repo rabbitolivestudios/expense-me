@@ -54,6 +54,51 @@
   resize: vertical;
 }
 
+.detail-folder-create {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid rgba(70, 10, 120, 0.1);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+
+.detail-folder-create label {
+  display: grid;
+  gap: 6px;
+}
+
+.detail-folder-create span {
+  color: var(--brand-purple);
+  font-size: 0.76rem;
+  font-weight: 850;
+}
+
+.detail-folder-create input {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  padding: 8px 10px;
+  font-weight: 800;
+}
+
+.detail-folder-create button {
+  min-height: 42px;
+  border-radius: 8px;
+  background: var(--brand-sky-blue);
+  color: var(--brand-white);
+  font-weight: 850;
+}
+
+.detail-folder-create button:disabled {
+  background: var(--border);
+  color: var(--text-muted);
+}
+
 .text-button {
   min-height: 40px;
   padding: 0 14px;
