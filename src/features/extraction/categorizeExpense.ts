@@ -5,6 +5,10 @@ export type ExpenseClassification = Pick<Expense, "expenseType" | "subExpenseTyp
 export function classifyExpenseText(text: string): ExpenseClassification {
   const normalized = text.toLowerCase();
 
+  if (/taxi|uber|lyft|cab/.test(normalized)) {
+    return { expenseType: "Transport", subExpenseType: "Taxi" };
+  }
+
   if (/\btips?\b|gratuity/.test(normalized)) {
     return { expenseType: "Other Expenses", subExpenseType: "Tips" };
   }
@@ -39,10 +43,6 @@ export function classifyExpenseText(text: string): ExpenseClassification {
 
   if (/\brail\b|\btrain\b|amtrak|metro rail/.test(normalized)) {
     return { expenseType: "Transport", subExpenseType: "Rail" };
-  }
-
-  if (/taxi|uber|lyft|cab/.test(normalized)) {
-    return { expenseType: "Transport", subExpenseType: "Taxi" };
   }
 
   if (/fuel|shell|gas|gasoline/.test(normalized)) {

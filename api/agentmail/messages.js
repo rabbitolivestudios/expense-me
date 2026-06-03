@@ -1,4 +1,4 @@
-import { listAgentMailMessages } from "../../serverless/agentmailClient.js";
+import { getAgentMailMessage, listAgentMailMessages } from "../../serverless/agentmailClient.js";
 
 export default async function handler(request, response) {
   if (request.method !== "GET") {
@@ -7,11 +7,16 @@ export default async function handler(request, response) {
     return;
   }
 
+  const { messageId, message_id: messageIdAlias } = request.query;
+  const resolvedMessageId = Array.isArray(messageId)
+    ? messageId[0]
+    : messageId || (Array.isArray(messageIdAlias) ? messageIdAlias[0] : messageIdAlias);
+
   try {
-    response.status(200).json(await listAgentMailMessages());
+    response.status(200).json(resolvedMessageId ? await getAgentMailMessage(resolvedMessageId) : await listAgentMailMessages());
   } catch (error) {
     response.status(500).json({
-      error: error instanceof Error ? error.message : "AgentMail sync failed"
+      error: error instanceof Error ? error.message : resolvedMessageId ? "AgentMail message fetch failed" : "AgentMail sync failed"
     });
   }
 }

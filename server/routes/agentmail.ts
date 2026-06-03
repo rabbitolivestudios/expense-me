@@ -3,9 +3,11 @@ import { getAgentMailMessage, listAgentMailMessages } from "../agentmailClient";
 
 export const agentMailRouter = Router();
 
-agentMailRouter.get("/messages", async (_request, response) => {
+agentMailRouter.get("/messages", async (request, response) => {
+  const messageId = typeof request.query.messageId === "string" ? request.query.messageId : undefined;
+
   try {
-    response.json(await listAgentMailMessages());
+    response.json(messageId ? await getAgentMailMessage(messageId) : await listAgentMailMessages());
   } catch (error) {
     response.status(500).json({ error: error instanceof Error ? error.message : "AgentMail sync failed" });
   }

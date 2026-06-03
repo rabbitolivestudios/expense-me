@@ -2,7 +2,12 @@ import type { Expense } from "../../domain/types";
 import { classifyExpenseText } from "./categorizeExpense";
 import { parseReceiptText } from "./receiptParser";
 
-export function createExpenseFromExtractedText(id: string, text: string): Expense {
+interface CreateExpenseOptions {
+  fallbackDate?: string;
+  sourceType?: Expense["sourceType"];
+}
+
+export function createExpenseFromExtractedText(id: string, text: string, options: CreateExpenseOptions = {}): Expense {
   const parsed = parseReceiptText(text);
   const currency = parsed.originalCurrency ?? "USD";
   const amount = parsed.originalAmount ?? 0.01;
@@ -10,10 +15,10 @@ export function createExpenseFromExtractedText(id: string, text: string): Expens
 
   return {
     id,
-    sourceType: "Upload",
+    sourceType: options.sourceType ?? "Upload",
     status: "Review",
     ...classification,
-    expenseDate: parsed.expenseDate ?? new Date().toISOString().slice(0, 10),
+    expenseDate: parsed.expenseDate ?? options.fallbackDate ?? new Date().toISOString().slice(0, 10),
     region: "NAFTA",
     country: "United States",
     city: "",

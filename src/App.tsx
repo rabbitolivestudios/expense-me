@@ -2,10 +2,10 @@ import { useEffect, useState } from "react";
 import { buildExpenseFolderDateRangeLabel, expenseFolderDateRangeLabel } from "./domain/reportDates";
 import type { Expense, ReceiptArtifact, Report, StatementCharge } from "./domain/types";
 import { CaptureSheet } from "./features/capture/CaptureSheet";
-import { fetchAgentMailMessages, type AgentMailMessageSummary } from "./features/email/agentMailSync";
+import { fetchAgentMailMessages } from "./features/email/agentMailSync";
+import { createExpenseFromEmailMessage, mergeEmailExpenseRepair, shouldRepairEmailExpense } from "./features/email/emailExpense";
 import { ExpenseDetailScreen } from "./features/expense/ExpenseDetailScreen";
 import { ExportScreen } from "./features/export/ExportScreen";
-import { createExpenseFromExtractedText } from "./features/extraction/extractionPipeline";
 import { InboxScreen } from "./features/inbox/InboxScreen";
 import { ReportsScreen } from "./features/reports/ReportsScreen";
 import { CardsScreen } from "./features/statements/CardsScreen";
@@ -112,33 +112,6 @@ function persistState(state: PersistedAppState) {
 
 function safeId(value: string) {
   return value.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").slice(0, 64) || `${Date.now()}`;
-}
-
-function createExpenseFromEmailSummary(message: AgentMailMessageSummary): { expense: Expense; artifact: ReceiptArtifact } {
-  const id = `exp-email-${safeId(message.message_id)}`;
-  const artifactId = `art-email-${safeId(message.message_id)}`;
-  const text = [message.subject, message.from].filter(Boolean).join(" ");
-  const expense = createExpenseFromExtractedText(id, text || "Email receipt");
-
-  return {
-    expense: {
-      ...expense,
-      sourceType: "Email",
-      status: "Review",
-      expenseDate: message.timestamp ? message.timestamp.slice(0, 10) : expense.expenseDate,
-      receiptArtifactIds: [artifactId],
-      notes: `Synced from ${message.from ?? "AgentMail"}${message.subject ? `: ${message.subject}` : ""}`
-    },
-    artifact: {
-      id: artifactId,
-      artifactType: "EmailBody",
-      sourceMessageId: message.message_id,
-      mimeType: "text/plain",
-      storageKey: `agentmail/${message.message_id}`,
-      createdAt: message.timestamp ?? new Date().toISOString(),
-      extractedText: text || "Email receipt"
-    }
-  };
 }
 
 export default function App() {
@@ -332,16 +305,34 @@ export default function App() {
 
   async function syncEmail() {
     const messages = await fetchAgentMailMessages();
-    const existingExpenseIds = new Set(expenses.map((expense) => expense.id));
-    const emailBundles = messages
-      .map(createExpenseFromEmailSummary)
-      .filter((bundle) => !existingExpenseIds.has(bundle.expense.id));
+    const existingExpensesById = new Map(expenses.map((expense) => [expense.id, expense]));
+    const emailBundles = messages.map(createExpenseFromEmailMessage);
+    const newBundles = emailBundles.filter((bundle) => !existingExpensesById.has(bundle.expense.id));
+    const repairBundles = emailBundles
+      .map((bundle) => ({ bundle, existing: existingExpensesById.get(bundle.expense.id) }))
+      .filter((item): item is { bundle: (typeof emailBundles)[number]; existing: Expense } =>
+        item.existing !== undefined && shouldRepairEmailExpense(item.existing, item.bundle.expense)
+      );
 
-    if (emailBundles.length > 0) {
+    if (newBundles.length > 0 || repairBundles.length > 0) {
       const reportId = reports[0]?.id ?? defaultFolderId;
-      const emailExpenses = emailBundles.map((bundle) => ({ ...bundle.expense, reportId }));
-      const emailArtifacts = emailBundles.map((bundle) => bundle.artifact);
-      setExpenses((current) => [...emailExpenses, ...current]);
+      const emailExpenses = newBundles.map((bundle) => ({ ...bundle.expense, reportId }));
+      const repairs = repairBundles.map(({ bundle, existing }) => {
+        const receiptArtifactIds = existing.receiptArtifactIds.length > 0 ? existing.receiptArtifactIds : bundle.expense.receiptArtifactIds;
+        const artifactId = receiptArtifactIds[0] ?? bundle.artifact.id;
+
+        return {
+          expense: mergeEmailExpenseRepair(existing, bundle.expense, receiptArtifactIds),
+          artifact: { ...bundle.artifact, id: artifactId }
+        };
+      });
+      const repairedExpensesById = new Map(repairs.map((repair) => [repair.expense.id, repair.expense]));
+      const emailArtifacts = [...newBundles.map((bundle) => bundle.artifact), ...repairs.map((repair) => repair.artifact)];
+
+      setExpenses((current) => [
+        ...emailExpenses,
+        ...current.map((expense) => repairedExpensesById.get(expense.id) ?? expense)
+      ]);
       setReceiptArtifacts((current) => [
         ...emailArtifacts,
         ...current.filter((artifact) => !emailArtifacts.some((nextArtifact) => nextArtifact.id === artifact.id))
@@ -349,7 +340,7 @@ export default function App() {
       addExpensesToCurrentReport(emailExpenses.map((expense) => expense.id), reportId);
     }
 
-    return emailBundles.length;
+    return newBundles.length + repairBundles.length;
   }
 
   function importStatementCharges(charges: StatementCharge[]) {

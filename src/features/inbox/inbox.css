@@ -298,6 +298,7 @@
 /* card text */
 .action-card .expense-main {
   display: block;
+  min-width: 0;
 }
 
 .action-card .expense-main strong,
@@ -313,6 +314,11 @@
   font-weight: 800;
   line-height: 1.16;
   letter-spacing: -0.01em;
+  display: -webkit-box;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
 }
 
 .action-card .expense-main small {
