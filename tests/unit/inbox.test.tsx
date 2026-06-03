@@ -35,6 +35,33 @@ describe("InboxScreen", () => {
     expect(screen.getByText("Avec River North")).toBeInTheDocument();
   });
 
+  it("syncs email when the AgentMail strip is tapped", async () => {
+    const syncEmail = vi.fn().mockResolvedValue(2);
+
+    render(
+      <InboxScreen
+        expenses={seedExpenses}
+        reports={seedReports}
+        onCapture={() => undefined}
+        onAssignExpenseFolder={() => undefined}
+        onCreateExpenseFolder={() => undefined}
+        onRenameExpense={() => undefined}
+        onDeleteExpense={() => undefined}
+        onOpenCards={() => undefined}
+        onOpenExport={() => undefined}
+        onOpenExpense={() => undefined}
+        onSyncEmail={syncEmail}
+        theme="light"
+        onToggleTheme={() => undefined}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Sync expense-me@agentmail.to inbox/i }));
+
+    expect(syncEmail).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText("Email synced. 2 receipts updated.")).toBeInTheDocument();
+  });
+
   it("opens assign, rename, and delete actions after a long press on an expense", () => {
     vi.useFakeTimers();
     const openExpense = vi.fn();

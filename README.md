@@ -45,6 +45,10 @@ npm run dev
 
 Create a local `.env` file from `.env.example` when testing AgentMail sync.
 
+## Email Sync
+
+On the Inbox screen, tap the `expense-me@agentmail.to` sync strip or the refresh icon in the header. The address is displayed as plain app text; it should not open a mail compose sheet.
+
 ## Validation
 
 ```bash

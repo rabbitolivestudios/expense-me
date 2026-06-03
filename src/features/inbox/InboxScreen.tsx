@@ -520,11 +520,17 @@ export function InboxScreen({
         <ChevronRight aria-hidden="true" />
       </button>
 
-      <div className="sync-strip">
+      <button
+        className="sync-strip"
+        type="button"
+        onClick={() => void syncEmail()}
+        disabled={syncing}
+        aria-label="Sync expense-me@agentmail.to inbox"
+      >
         <MailCheck aria-hidden="true" />
         <span>expense-me@agentmail.to</span>
-        <strong>{syncing ? "Syncing" : "Auto sync"}</strong>
-      </div>
+        <strong>{syncing ? "Syncing" : "Sync now"}</strong>
+      </button>
       {syncStatus && <p className="inline-status">{syncStatus}</p>}
 
       <div className="quick-row" aria-label="Quick intake actions">
