@@ -22,6 +22,24 @@
 - Do not commit credentials, `.env`, generated export packages, screenshots, Wrangler local state, or Cloudflare secrets.
 - Run Clawpatch `map`, `review`, and `report` before any implementation commit intended for review or deployment.
 
+## Continuation Status - 2026-06-03
+
+Tasks 1 through 6 have already been implemented and committed on `v15-single-source`:
+
+- `a445d72 chore: scaffold cloudflare v1.5`
+- `f3b4c81 feat: add cloudflare access auth`
+- `52d26fd refactor: extract cloud snapshot helpers`
+- `eaefc7e feat: add cloud data repository`
+- `85e46d6 feat: add cloud api entrypoint`
+- `8ac0a69 feat: add v1 local snapshot migration`
+
+The branch forked from V1 at `da1ad27`. Production V1 hotfix commit `b6be02e fix: add active expense folder controls` is now on `origin/main` and must be merged into `v15-single-source` before Task 7 so V1.5 does not regress:
+
+- Inbox Active Expense Folder selector and persistence;
+- Export Package folder selector behavior;
+- localStorage malformed-state recovery used by V1 fallback behavior;
+- inbox UI fixes and expanded tests.
+
 ## Target Files
 
 Create:
@@ -1185,6 +1203,66 @@ Commit:
 git add src/client/localSnapshot.ts src/cloudflare/d1Repository.ts src/cloudflare/apiRouter.ts tests/unit/localSnapshot.test.ts tests/unit/cloudMigration.test.ts
 git commit -m "feat: add v1 local snapshot migration"
 ```
+
+## Task 6A: Merge V1 Hotfix Into V1.5 Branch
+
+**Files:**
+- Modify: `src/App.tsx`
+- Modify: `src/app/appState.ts`
+- Modify: `src/features/inbox/InboxScreen.tsx`
+- Modify: `src/features/inbox/inbox.css`
+- Modify: `src/styles/app.css`
+- Modify: `tests/unit/inbox.test.tsx`
+- Modify: `tests/unit/shell.test.tsx`
+- Modify: `README.md`
+- Modify: `docs/DECISIONS.md`
+
+- [ ] **Step 1: Merge the V1 hotfix line**
+
+Run:
+
+```bash
+git merge origin/main --no-edit
+```
+
+Expected: conflicts are likely in `src/App.tsx`, `src/app/appState.ts`, `README.md`, `docs/DECISIONS.md`, `tests/unit/inbox.test.tsx`, and `tests/unit/shell.test.tsx`.
+
+- [ ] **Step 2: Resolve conflicts preserving both sides**
+
+Keep all V1.5 Cloudflare files and cloud contracts from this branch. Also keep the V1 hotfix behavior from `origin/main`:
+
+- `activeReportId` and `currentActiveReportId` drive new capture, email sync, and statement-created expenses;
+- Inbox receives `activeReportId` and `onActiveReportChange`;
+- Export still receives all reports and chooses its own Expense Folder;
+- malformed V1 localStorage recovery behavior remains available until Task 8 replaces durable V1.5 state;
+- duplicate Expense Folder ids are prevented by collision-resistant id generation;
+- missing `statementCharges` and missing `reports` V1 snapshots migrate without erasing local data.
+
+The resolved `src/app/appState.ts` must contain reusable helpers for `reportLabelForExpenseIds`, active-folder-safe normalization, and collision-resistant Expense Folder creation so Task 8 can reuse them from the cloud hook.
+
+- [ ] **Step 3: Verify the merge**
+
+Run:
+
+```bash
+npm test -- tests/unit/inbox.test.tsx tests/unit/shell.test.tsx tests/unit/localSnapshot.test.ts tests/unit/cloudMigration.test.ts
+npm test
+npm run build
+git diff --check
+```
+
+Expected: V1 hotfix tests and V1.5 migration/cloud tests all pass.
+
+- [ ] **Step 4: Commit the merge**
+
+Run:
+
+```bash
+git add README.md docs/DECISIONS.md src/App.tsx src/app/appState.ts src/features/inbox/InboxScreen.tsx src/features/inbox/inbox.css src/styles/app.css tests/unit/inbox.test.tsx tests/unit/shell.test.tsx
+git commit
+```
+
+Expected: merge commit records `origin/main` hotfix integration into `v15-single-source`.
 
 ## Task 7: Client Cloud Repository
 
