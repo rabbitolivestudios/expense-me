@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { buildExpenseFolderDateRangeLabel, expenseFolderDateRangeLabel } from "./domain/reportDates";
+import { buildExpenseFolderDateRangeLabel } from "./domain/reportDates";
 import type { Expense, ReceiptArtifact, Report, StatementCharge } from "./domain/types";
 import { CaptureSheet } from "./features/capture/CaptureSheet";
 import { fetchAgentMailMessages } from "./features/email/agentMailSync";
@@ -16,7 +16,9 @@ import type { ScreenName } from "./features/shell/BottomNav";
 import "./styles/app.css";
 
 const storageKey = "expense-me-v1-live-state";
+const recoveryStorageKey = `${storageKey}:recovery`;
 const defaultFolderId = "report-current";
+let fallbackReportIdCounter = 0;
 
 interface ExpenseFolderDates {
   startDate?: string;
@@ -28,6 +30,13 @@ interface PersistedAppState {
   receiptArtifacts: ReceiptArtifact[];
   reports: Report[];
   statementCharges: StatementCharge[];
+  activeReportId?: string;
+}
+
+interface PersistedStateLoad {
+  state?: PersistedAppState;
+  failed: boolean;
+  raw?: string;
 }
 
 function cloneReports(reports: Report[]) {
@@ -71,42 +80,98 @@ function syncReportsWithExpenses(reports: Report[], expenses: Expense[]) {
     return {
       ...report,
       expenseIds,
-      dateRangeLabel: expenseIds.length > 0 || report.startDate || report.endDate ? expenseFolderDateRangeLabel(report) : "Add expenses to this folder"
+      dateRangeLabel: reportLabelForExpenseIds(report, expenseIds)
     };
   });
 }
 
-function loadPersistedState(): PersistedAppState | undefined {
+function reportLabelForExpenseIds(report: Report, expenseIds: string[]) {
+  if (report.startDate || report.endDate) {
+    return buildExpenseFolderDateRangeLabel(report.startDate, report.endDate);
+  }
+
+  return expenseIds.length > 0 ? "Ready for export package" : "Add expenses to this folder";
+}
+
+function requiredArray<T>(parsed: Partial<Record<keyof PersistedAppState, unknown>>, key: keyof PersistedAppState) {
+  const value = parsed[key];
+
+  return Array.isArray(value) ? (value as T[]) : undefined;
+}
+
+function optionalArray<T>(parsed: Partial<Record<keyof PersistedAppState, unknown>>, key: keyof PersistedAppState) {
+  const value = parsed[key];
+  if (value === undefined) return [];
+
+  return Array.isArray(value) ? (value as T[]) : undefined;
+}
+
+function migrateReports(parsed: Partial<Record<keyof PersistedAppState, unknown>>, expenses: Expense[]) {
+  const value = parsed.reports;
+
+  if (value === undefined) {
+    return [createDefaultReport(expenses.map((expense) => expense.id))];
+  }
+
+  return Array.isArray(value) ? cloneReports(value as Report[]) : undefined;
+}
+
+function loadPersistedState(): PersistedStateLoad {
+  let raw: string | null = null;
+
   try {
-    const raw = window.localStorage.getItem(storageKey);
-    if (!raw) return undefined;
+    raw = window.localStorage.getItem(storageKey);
+    if (!raw) return { failed: false };
 
     const parsed = JSON.parse(raw) as Partial<PersistedAppState>;
-    if (
-      !Array.isArray(parsed.expenses) ||
-      !Array.isArray(parsed.receiptArtifacts) ||
-      !Array.isArray(parsed.reports) ||
-      !Array.isArray(parsed.statementCharges)
-    ) {
-      return undefined;
+    const expenses = requiredArray<Expense>(parsed, "expenses");
+    const receiptArtifacts = requiredArray<ReceiptArtifact>(parsed, "receiptArtifacts");
+    const statementCharges = optionalArray<StatementCharge>(parsed, "statementCharges");
+
+    if (!expenses || !receiptArtifacts || !statementCharges) {
+      return { failed: true, raw };
     }
+    const reports = migrateReports(parsed, expenses);
+
+    if (!reports) return { failed: true, raw };
 
     return {
-      expenses: parsed.expenses,
-      receiptArtifacts: parsed.receiptArtifacts,
-      reports: cloneReports(parsed.reports),
-      statementCharges: parsed.statementCharges
+      failed: false,
+      state: {
+        expenses,
+        receiptArtifacts,
+        reports: cloneReports(reports),
+        statementCharges,
+        activeReportId: typeof parsed.activeReportId === "string" ? parsed.activeReportId : undefined
+      }
     };
   } catch {
-    return undefined;
+    return { failed: true, raw: raw ?? undefined };
   }
 }
 
 function persistState(state: PersistedAppState) {
   try {
     window.localStorage.setItem(storageKey, JSON.stringify(state));
+    return true;
   } catch {
-    // Local persistence is best-effort for private browsing or restricted storage.
+    return false;
+  }
+}
+
+function backupFailedState(raw: string) {
+  try {
+    window.localStorage.setItem(
+      recoveryStorageKey,
+      JSON.stringify({
+        savedAt: new Date().toISOString(),
+        storageKey,
+        raw
+      })
+    );
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -114,50 +179,160 @@ function safeId(value: string) {
   return value.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").slice(0, 64) || `${Date.now()}`;
 }
 
+function uniqueReportId(value: string, existingIds: Set<string>) {
+  const base = `report-${safeId(value)}`;
+
+  while (true) {
+    fallbackReportIdCounter += 1;
+    const suffix = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${fallbackReportIdCounter}`;
+    const id = `${base}-${suffix}`;
+
+    if (!existingIds.has(id)) return id;
+  }
+}
+
 export default function App() {
-  const persistedState = loadPersistedState();
-  const initialReports = persistedState?.reports?.length ? cloneReports(persistedState.reports) : [createDefaultReport()];
-  const initialExpenses = normalizeExpensesWithReports(persistedState?.expenses ?? [], initialReports);
+  const [initialAppState] = useState(() => {
+    const persistedLoad = loadPersistedState();
+    const persistedState = persistedLoad.state;
+    const baseReports = persistedState?.reports?.length ? cloneReports(persistedState.reports) : [createDefaultReport()];
+    const initialExpenses = normalizeExpensesWithReports(persistedState?.expenses ?? [], baseReports);
+    const initialActiveReportId =
+      persistedState?.activeReportId && baseReports.some((report) => report.id === persistedState.activeReportId)
+        ? persistedState.activeReportId
+        : (baseReports[0]?.id ?? defaultFolderId);
+
+    return {
+      persistedState,
+      persistenceLoadFailed: persistedLoad.failed,
+      initialExpenses,
+      initialReports: syncReportsWithExpenses(baseReports, initialExpenses),
+      initialActiveReportId,
+      failedRawState: persistedLoad.raw
+    };
+  });
   const [screen, setScreen] = useState<ScreenName>("Inbox");
-  const [expenses, setExpenses] = useState<Expense[]>(() => initialExpenses);
-  const [receiptArtifacts, setReceiptArtifacts] = useState<ReceiptArtifact[]>(() => persistedState?.receiptArtifacts ?? []);
-  const [reports, setReports] = useState<Report[]>(() => syncReportsWithExpenses(initialReports, initialExpenses));
-  const [statementCharges, setStatementCharges] = useState<StatementCharge[]>(() => persistedState?.statementCharges ?? []);
+  const [expenses, setExpenses] = useState<Expense[]>(() => initialAppState.initialExpenses);
+  const expensesRef = useRef<Expense[]>(initialAppState.initialExpenses);
+  const [receiptArtifacts, setReceiptArtifacts] = useState<ReceiptArtifact[]>(() => initialAppState.persistedState?.receiptArtifacts ?? []);
+  const [reports, setReports] = useState<Report[]>(() => initialAppState.initialReports);
+  const reportsRef = useRef<Report[]>(initialAppState.initialReports);
+  const [activeReportId, setActiveReportId] = useState(initialAppState.initialActiveReportId);
+  const activeReportIdRef = useRef(initialAppState.initialActiveReportId);
+  const persistenceAllowedRef = useRef(!initialAppState.persistenceLoadFailed);
+  const failedRawStateRef = useRef(initialAppState.failedRawState);
+  const recoveryBackupSavedRef = useRef(false);
+  const [statementCharges, setStatementCharges] = useState<StatementCharge[]>(() => initialAppState.persistedState?.statementCharges ?? []);
   const [selectedExpenseId, setSelectedExpenseId] = useState<string | null>(null);
+  const [persistenceError, setPersistenceError] = useState(initialAppState.persistenceLoadFailed);
   const selectedExpense = expenses.find((expense) => expense.id === selectedExpenseId);
+  const activeReport = reports.find((report) => report.id === activeReportId) ?? reports[0];
+  const currentActiveReportId = activeReport?.id ?? defaultFolderId;
   const { theme, toggleTheme } = useTheme();
   const emailSyncPromiseRef = useRef<Promise<number> | null>(null);
 
   useEffect(() => {
-    persistState({ expenses, receiptArtifacts, reports, statementCharges });
-  }, [expenses, receiptArtifacts, reports, statementCharges]);
+    expensesRef.current = expenses;
+  }, [expenses]);
+
+  useEffect(() => {
+    reportsRef.current = reports;
+  }, [reports]);
+
+  useEffect(() => {
+    activeReportIdRef.current = currentActiveReportId;
+  }, [currentActiveReportId]);
+
+  useEffect(() => {
+    if (!persistenceAllowedRef.current) {
+      setPersistenceError(true);
+      return;
+    }
+    if (failedRawStateRef.current && !recoveryBackupSavedRef.current) {
+      const backedUp = backupFailedState(failedRawStateRef.current);
+      if (!backedUp) {
+        setPersistenceError(true);
+        return;
+      }
+      recoveryBackupSavedRef.current = true;
+    }
+
+    const persisted = persistState({ expenses, receiptArtifacts, reports, statementCharges, activeReportId: currentActiveReportId });
+    setPersistenceError(!persisted);
+  }, [expenses, receiptArtifacts, reports, statementCharges, currentActiveReportId]);
+
+  useEffect(() => {
+    if (reports.length > 0 && !reports.some((report) => report.id === activeReportId)) {
+      changeActiveReport(reports[0].id);
+    }
+  }, [reports, activeReportId]);
 
   function changeScreen(nextScreen: ScreenName) {
     setSelectedExpenseId(null);
     setScreen(nextScreen);
   }
 
+  function allowPersistenceAfterUserChange() {
+    persistenceAllowedRef.current = true;
+  }
+
+  function updateExpenses(updater: Expense[] | ((current: Expense[]) => Expense[])) {
+    allowPersistenceAfterUserChange();
+    setExpenses((current) => {
+      const nextExpenses = typeof updater === "function" ? updater(current) : updater;
+      expensesRef.current = nextExpenses;
+
+      return nextExpenses;
+    });
+  }
+
+  function updateReceiptArtifacts(updater: ReceiptArtifact[] | ((current: ReceiptArtifact[]) => ReceiptArtifact[])) {
+    allowPersistenceAfterUserChange();
+    setReceiptArtifacts((current) => (typeof updater === "function" ? updater(current) : updater));
+  }
+
+  function updateReports(updater: Report[] | ((current: Report[]) => Report[])) {
+    allowPersistenceAfterUserChange();
+    setReports((current) => {
+      const nextReports = typeof updater === "function" ? updater(current) : updater;
+      reportsRef.current = nextReports;
+
+      return nextReports;
+    });
+  }
+
+  function updateStatementCharges(updater: StatementCharge[] | ((current: StatementCharge[]) => StatementCharge[])) {
+    allowPersistenceAfterUserChange();
+    setStatementCharges((current) => (typeof updater === "function" ? updater(current) : updater));
+  }
+
+  function changeActiveReport(reportId: string) {
+    allowPersistenceAfterUserChange();
+    activeReportIdRef.current = reportId;
+    setActiveReportId(reportId);
+  }
+
   function saveExpense(updatedExpense: Expense) {
-    setExpenses((current) => current.map((expense) => (expense.id === updatedExpense.id ? updatedExpense : expense)));
-    setReports((current) =>
+    updateExpenses((current) => current.map((expense) => (expense.id === updatedExpense.id ? updatedExpense : expense)));
+    updateReports((current) =>
       current.map((report) => ({
         ...report,
         expenseIds:
           report.id === updatedExpense.reportId
             ? [updatedExpense.id, ...report.expenseIds.filter((id) => id !== updatedExpense.id)]
             : report.expenseIds.filter((id) => id !== updatedExpense.id)
-      }))
+      })).map((report) => ({ ...report, dateRangeLabel: reportLabelForExpenseIds(report, report.expenseIds) }))
     );
     setSelectedExpenseId(null);
   }
 
   function assignExpenseFolder(expenseId: string, reportId: string) {
-    setExpenses((current) => current.map((expense) => (expense.id === expenseId ? { ...expense, reportId } : expense)));
-    setReports((current) =>
+    updateExpenses((current) => current.map((expense) => (expense.id === expenseId ? { ...expense, reportId } : expense)));
+    updateReports((current) =>
       current.map((report) => ({
         ...report,
         expenseIds: report.id === reportId ? [expenseId, ...report.expenseIds.filter((id) => id !== expenseId)] : report.expenseIds.filter((id) => id !== expenseId)
-      }))
+      })).map((report) => ({ ...report, dateRangeLabel: reportLabelForExpenseIds(report, report.expenseIds) }))
     );
   }
 
@@ -165,7 +340,7 @@ export default function App() {
     const trimmedName = name.trim();
     if (!trimmedName) return;
 
-    setExpenses((current) =>
+    updateExpenses((current) =>
       current.map((expense) =>
         expense.id === expenseId
           ? expense.merchant
@@ -181,19 +356,21 @@ export default function App() {
     if (!trimmedName) return undefined;
     const startDate = dates.startDate || undefined;
     const endDate = dates.endDate || startDate;
+    const existingIds = new Set(reportsRef.current.map((report) => report.id));
 
     const report: Report = {
-      id: `report-${safeId(trimmedName)}-${Date.now()}`,
+      id: uniqueReportId(trimmedName, existingIds),
       name: trimmedName,
       startDate,
       endDate,
-      dateRangeLabel: buildExpenseFolderDateRangeLabel(startDate, endDate),
+      dateRangeLabel: "",
       expenseIds: [],
       status: "Draft",
       createdAt: new Date().toISOString()
     };
+    report.dateRangeLabel = reportLabelForExpenseIds(report, report.expenseIds);
 
-    setReports((current) => [report, ...current]);
+    updateReports((current) => [report, ...current]);
     return report;
   }
 
@@ -201,33 +378,40 @@ export default function App() {
     const trimmedName = name.trim();
     if (!trimmedName) return;
 
-    setReports((current) =>
+    updateReports((current) =>
       current.map((report) => {
         if (report.id !== reportId) return report;
 
         const startDate = dates ? dates.startDate || undefined : report.startDate;
         const endDate = dates ? dates.endDate || startDate : report.endDate;
 
-        return {
+        const updatedReport = {
           ...report,
           name: trimmedName,
           startDate,
           endDate,
-          dateRangeLabel: buildExpenseFolderDateRangeLabel(startDate, endDate)
+          dateRangeLabel: ""
         };
+        updatedReport.dateRangeLabel = reportLabelForExpenseIds(updatedReport, updatedReport.expenseIds);
+
+        return updatedReport;
       })
     );
   }
 
   function deleteExpenseFolder(reportId: string) {
-    setReports((current) => {
-      if (current.length <= 1) return current;
+    const currentReports = reportsRef.current;
+    if (currentReports.length <= 1) return;
 
-      const target = current.find((report) => report.id === reportId);
-      if (!target || target.expenseIds.length > 0) return current;
+    const target = currentReports.find((report) => report.id === reportId);
+    if (!target || target.expenseIds.length > 0) return;
 
-      return current.filter((report) => report.id !== reportId);
-    });
+    const nextReports = currentReports.filter((report) => report.id !== reportId);
+    updateReports(nextReports);
+
+    if (activeReportIdRef.current === reportId && nextReports[0]) {
+      changeActiveReport(nextReports[0].id);
+    }
   }
 
   function deleteExpense(expenseId: string) {
@@ -235,20 +419,20 @@ export default function App() {
     const nextExpenses = expenses.filter((expense) => expense.id !== expenseId);
     const usedArtifactIds = new Set(nextExpenses.flatMap((expense) => expense.receiptArtifactIds));
 
-    setExpenses(nextExpenses);
-    setReceiptArtifacts((current) => current.filter((artifact) => usedArtifactIds.has(artifact.id)));
-    setReports((current) =>
-      current.map((report, index) => {
+    updateExpenses(nextExpenses);
+    updateReceiptArtifacts((current) => current.filter((artifact) => usedArtifactIds.has(artifact.id)));
+    updateReports((current) =>
+      current.map((report) => {
         const expenseIds = report.expenseIds.filter((id) => id !== expenseId);
 
         return {
           ...report,
           expenseIds,
-          dateRangeLabel: index === 0 && expenseIds.length === 0 ? "Add expenses to build the report" : report.dateRangeLabel
+          dateRangeLabel: reportLabelForExpenseIds(report, expenseIds)
         };
       })
     );
-    setStatementCharges((current) =>
+    updateStatementCharges((current) =>
       current.map((charge) =>
         charge.matchedExpenseId === expenseId || charge.id === deletedExpense?.statementChargeMatchId
           ? { ...charge, matchStatus: "Unmatched", matchedExpenseId: undefined }
@@ -265,13 +449,13 @@ export default function App() {
       declarationId: `decl-${expense.id}`,
       status: "Ready"
     };
-    setExpenses((current) => current.map((item) => (item.id === expense.id ? updatedExpense : item)));
+    updateExpenses((current) => current.map((item) => (item.id === expense.id ? updatedExpense : item)));
   }
 
-  function addExpensesToCurrentReport(expenseIds: string[], reportId = reports[0]?.id ?? defaultFolderId) {
+  function addExpensesToCurrentReport(expenseIds: string[], reportId = currentActiveReportId) {
     if (expenseIds.length === 0) return;
 
-    setReports((current) => {
+    updateReports((current) => {
       if (current.length === 0) {
         return [createDefaultReport(expenseIds)];
       }
@@ -280,21 +464,20 @@ export default function App() {
         report.id === reportId || (index === 0 && !current.some((item) => item.id === reportId))
           ? {
               ...report,
-              dateRangeLabel: "Ready for export package",
               expenseIds: [...expenseIds.filter((id) => !report.expenseIds.includes(id)), ...report.expenseIds]
             }
           : report
-      );
+      ).map((report) => ({ ...report, dateRangeLabel: reportLabelForExpenseIds(report, report.expenseIds) }));
     });
   }
 
   function addExpense(expense: Expense, artifacts: ReceiptArtifact[] = []) {
-    const reportId = reports[0]?.id ?? defaultFolderId;
+    const reportId = currentActiveReportId;
     const assignedExpense = { ...expense, reportId };
 
-    setExpenses((current) => [assignedExpense, ...current]);
+    updateExpenses((current) => [assignedExpense, ...current]);
     if (artifacts.length > 0) {
-      setReceiptArtifacts((current) => [
+      updateReceiptArtifacts((current) => [
         ...artifacts,
         ...current.filter((artifact) => !artifacts.some((nextArtifact) => nextArtifact.id === artifact.id))
       ]);
@@ -304,41 +487,54 @@ export default function App() {
     setScreen("Inbox");
   }
 
-  async function runEmailSync() {
+  async function runEmailSync(targetReportId: string) {
     const messages = await fetchAgentMailMessages();
-    const existingExpensesById = new Map(expenses.map((expense) => [expense.id, expense]));
     const emailBundles = messages.map(createExpenseFromEmailMessage);
+    const existingExpensesById = new Map(expensesRef.current.map((expense) => [expense.id, expense]));
     const newBundles = emailBundles.filter((bundle) => !existingExpensesById.has(bundle.expense.id));
     const repairBundles = emailBundles
       .map((bundle) => ({ bundle, existing: existingExpensesById.get(bundle.expense.id) }))
       .filter((item): item is { bundle: (typeof emailBundles)[number]; existing: Expense } =>
         item.existing !== undefined && shouldRepairEmailExpense(item.existing, item.bundle.expense)
-      );
+    );
 
     if (newBundles.length > 0 || repairBundles.length > 0) {
-      const reportId = reports[0]?.id ?? defaultFolderId;
+      const liveReports = reportsRef.current;
+      const reportId = liveReports.some((report) => report.id === targetReportId)
+        ? targetReportId
+        : (liveReports[0]?.id ?? defaultFolderId);
       const emailExpenses = newBundles.map((bundle) => ({ ...bundle.expense, reportId }));
       const repairs = repairBundles.map(({ bundle, existing }) => {
         const receiptArtifactIds = existing.receiptArtifactIds.length > 0 ? existing.receiptArtifactIds : bundle.expense.receiptArtifactIds;
         const artifactId = receiptArtifactIds[0] ?? bundle.artifact.id;
+        const hasValidFolder = Boolean(
+          existing.reportId &&
+          liveReports.some((report) => report.id === existing.reportId && report.expenseIds.includes(existing.id))
+        );
+        const repairedExpense = mergeEmailExpenseRepair(existing, bundle.expense, receiptArtifactIds);
 
         return {
-          expense: mergeEmailExpenseRepair(existing, bundle.expense, receiptArtifactIds),
-          artifact: { ...bundle.artifact, id: artifactId }
+          expense: hasValidFolder ? repairedExpense : { ...repairedExpense, reportId },
+          artifact: { ...bundle.artifact, id: artifactId },
+          addToReport: !hasValidFolder
         };
       });
       const repairedExpensesById = new Map(repairs.map((repair) => [repair.expense.id, repair.expense]));
       const emailArtifacts = [...newBundles.map((bundle) => bundle.artifact), ...repairs.map((repair) => repair.artifact)];
+      const expenseIdsForReport = [
+        ...emailExpenses.map((expense) => expense.id),
+        ...repairs.filter((repair) => repair.addToReport).map((repair) => repair.expense.id)
+      ];
 
-      setExpenses((current) => [
+      updateExpenses((current) => [
         ...emailExpenses,
         ...current.map((expense) => repairedExpensesById.get(expense.id) ?? expense)
       ]);
-      setReceiptArtifacts((current) => [
+      updateReceiptArtifacts((current) => [
         ...emailArtifacts,
         ...current.filter((artifact) => !emailArtifacts.some((nextArtifact) => nextArtifact.id === artifact.id))
       ]);
-      addExpensesToCurrentReport(emailExpenses.map((expense) => expense.id), reportId);
+      addExpensesToCurrentReport(expenseIdsForReport, reportId);
     }
 
     return newBundles.length + repairBundles.length;
@@ -349,7 +545,8 @@ export default function App() {
       return emailSyncPromiseRef.current;
     }
 
-    emailSyncPromiseRef.current = runEmailSync().finally(() => {
+    const targetReportId = currentActiveReportId;
+    emailSyncPromiseRef.current = runEmailSync(targetReportId).finally(() => {
       emailSyncPromiseRef.current = null;
     });
 
@@ -357,15 +554,15 @@ export default function App() {
   }
 
   function importStatementCharges(charges: StatementCharge[]) {
-    const reconciled = reconcileStatementCharges(expenses, charges);
-    const reportId = reports[0]?.id ?? defaultFolderId;
+    const reconciled = reconcileStatementCharges(expensesRef.current, charges);
+    const reportId = currentActiveReportId;
     const createdExpenseIds = new Set(reconciled.createdExpenseIds);
     const nextExpenses = reconciled.expenses.map((expense) =>
       createdExpenseIds.has(expense.id) && !expense.reportId ? { ...expense, reportId } : expense
     );
 
-    setExpenses(nextExpenses);
-    setStatementCharges((current) => [
+    updateExpenses(nextExpenses);
+    updateStatementCharges((current) => [
       ...reconciled.charges,
       ...current.filter((charge) => !reconciled.charges.some((nextCharge) => nextCharge.id === charge.id))
     ]);
@@ -380,6 +577,11 @@ export default function App() {
 
   return (
     <AppShell active={screen} onChange={changeScreen}>
+      {persistenceError && (
+        <div className="persistence-alert" role="alert">
+          Changes are not being saved. Check browser storage before closing this app.
+        </div>
+      )}
       {selectedExpense && (
         <ExpenseDetailScreen
           expense={selectedExpense}
@@ -405,6 +607,8 @@ export default function App() {
           onOpenExpense={setSelectedExpenseId}
           onDeleteExpense={deleteExpense}
           reports={reports}
+          activeReportId={currentActiveReportId}
+          onActiveReportChange={changeActiveReport}
           onSyncEmail={syncEmail}
         />
       )}
