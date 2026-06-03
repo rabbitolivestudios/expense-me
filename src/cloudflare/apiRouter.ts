@@ -1,4 +1,4 @@
-import type { Expense } from "../domain/types";
+import type { AppSnapshot, Expense } from "../domain/types";
 import { requireAccessUser } from "./accessAuth";
 import { D1ExpenseMeRepository, type MutationResult, VersionConflictError } from "./d1Repository";
 import { errorResponse, jsonResponse, readJson } from "./http";
@@ -17,6 +17,7 @@ interface CloudApiRepository {
     expenseId: string,
     options: { expectedVersion?: number }
   ): Promise<MutationResult>;
+  replaceFromMigration(context: WorkspaceContext, snapshot: AppSnapshot): Promise<MutationResult>;
 }
 
 interface RouteDeps {
@@ -57,6 +58,12 @@ export async function handleApiRequest(request: Request, env: CloudflareEnv, dep
       const result = await repository.deleteExpense(context, decodeURIComponent(expenseDelete[1]), {
         expectedVersion: expectedVersionFromSearch(url)
       });
+      return jsonResponse(result);
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/migrate-local-snapshot") {
+      const body = await readJson<{ snapshot: AppSnapshot }>(request);
+      const result = await repository.replaceFromMigration(context, body.snapshot);
       return jsonResponse(result);
     }
 

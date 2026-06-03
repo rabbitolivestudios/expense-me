@@ -308,6 +308,60 @@ describe("D1 Expense Me repository", () => {
     expect(db.prepare).toHaveBeenCalledTimes(2);
     expect(db.prepare).toHaveBeenCalledWith(expect.stringContaining("INSERT OR IGNORE INTO statement_charges"));
   });
+
+  it("replaces V1 snapshot tables with forced upserts during migration", async () => {
+    const preparedSql: string[] = [];
+    const db = {
+      prepare: vi.fn((sql: string) => {
+        preparedSql.push(sql);
+        return statement();
+      }),
+      batch: vi.fn().mockResolvedValue([])
+    };
+    const repo = new D1ExpenseMeRepository({ EXPENSE_ME_DB: db } as unknown as CloudflareEnv);
+    const cloudSnapshot = {
+      workspaceId: "workspace-personal",
+      userEmail: "thiago@example.com",
+      expenses: [seedExpenses[0]],
+      reports: [seedReports[0]],
+      receiptArtifacts: [seedArtifacts[0]],
+      statementCharges: [seedStatementCharges[0]],
+      exportPackages: [],
+      recordVersions: {
+        expenses: { [seedExpenses[0].id]: 1 },
+        reports: { [seedReports[0].id]: 1 },
+        receiptArtifacts: { [seedArtifacts[0].id]: 1 },
+        statementCharges: { [seedStatementCharges[0].id]: 1 },
+        exportPackages: {}
+      }
+    };
+    vi.spyOn(repo, "upsertExpenseFolder").mockResolvedValue({ snapshot: cloudSnapshot });
+    vi.spyOn(repo, "upsertExpense").mockResolvedValue({ snapshot: cloudSnapshot });
+    vi.spyOn(repo, "upsertReceiptArtifact").mockResolvedValue(undefined);
+    vi.spyOn(repo, "upsertStatementCharge").mockResolvedValue(undefined);
+    vi.spyOn(repo, "getSnapshot").mockResolvedValue(cloudSnapshot);
+
+    const result = await repo.replaceFromMigration(context(), {
+      expenses: [seedExpenses[0]],
+      reports: [seedReports[0]],
+      receiptArtifacts: [seedArtifacts[0]],
+      statementCharges: [seedStatementCharges[0]]
+    });
+
+    expect(db.batch).toHaveBeenCalledTimes(1);
+    expect(preparedSql).toEqual([
+      "DELETE FROM expenses WHERE workspace_id = ?",
+      "DELETE FROM expense_folders WHERE workspace_id = ?",
+      "DELETE FROM receipt_artifacts WHERE workspace_id = ?",
+      "DELETE FROM statement_charges WHERE workspace_id = ?"
+    ]);
+    expect(preparedSql.some((sql) => sql.includes("export_packages"))).toBe(false);
+    expect(repo.upsertExpenseFolder).toHaveBeenCalledWith(context(), seedReports[0], { force: true });
+    expect(repo.upsertExpense).toHaveBeenCalledWith(context(), seedExpenses[0], { force: true });
+    expect(repo.upsertReceiptArtifact).toHaveBeenCalledWith(context(), seedArtifacts[0], { force: true });
+    expect(repo.upsertStatementCharge).toHaveBeenCalledWith(context(), seedStatementCharges[0], { force: true });
+    expect(result).toEqual({ snapshot: cloudSnapshot });
+  });
 });
 
 describe("artifact store", () => {

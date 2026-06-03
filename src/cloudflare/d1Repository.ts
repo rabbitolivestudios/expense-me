@@ -1,4 +1,4 @@
-import type { Expense, ExportPackage, ReceiptArtifact, Report, StatementCharge } from "../domain/types";
+import type { AppSnapshot, Expense, ExportPackage, ReceiptArtifact, Report, StatementCharge } from "../domain/types";
 import { normalizeCloudSnapshot } from "./appSnapshot";
 import { decodePayload, encodePayload, stripArtifactDataUrl } from "./schema";
 import type { AccessUser, CloudSnapshot, CloudflareEnv, WorkspaceContext } from "./types";
@@ -260,6 +260,33 @@ export class D1ExpenseMeRepository {
         .bind(context.workspaceId, reportId, currentVersion)
         .run();
       assertWriteApplied(result);
+    }
+
+    return { snapshot: await this.getSnapshot(context) };
+  }
+
+  async replaceFromMigration(context: WorkspaceContext, snapshot: AppSnapshot): Promise<MutationResult> {
+    await this.env.EXPENSE_ME_DB.batch([
+      this.env.EXPENSE_ME_DB.prepare("DELETE FROM expenses WHERE workspace_id = ?").bind(context.workspaceId),
+      this.env.EXPENSE_ME_DB.prepare("DELETE FROM expense_folders WHERE workspace_id = ?").bind(context.workspaceId),
+      this.env.EXPENSE_ME_DB.prepare("DELETE FROM receipt_artifacts WHERE workspace_id = ?").bind(context.workspaceId),
+      this.env.EXPENSE_ME_DB.prepare("DELETE FROM statement_charges WHERE workspace_id = ?").bind(context.workspaceId)
+    ]);
+
+    for (const report of snapshot.reports) {
+      await this.upsertExpenseFolder(context, report, { force: true });
+    }
+
+    for (const expense of snapshot.expenses) {
+      await this.upsertExpense(context, expense, { force: true });
+    }
+
+    for (const artifact of snapshot.receiptArtifacts) {
+      await this.upsertReceiptArtifact(context, artifact, { force: true });
+    }
+
+    for (const charge of snapshot.statementCharges) {
+      await this.upsertStatementCharge(context, charge, { force: true });
     }
 
     return { snapshot: await this.getSnapshot(context) };
