@@ -8,6 +8,16 @@ Expense Me helps capture receipts from camera uploads, PDFs/images, email intake
 
 https://expense-me-tbo.vercel.app
 
+## Product Shape
+
+Expense Me is designed around three layers:
+
+- **Expense**: one receipt, card charge, or manual item.
+- **Expense Folder**: the required business grouping for related expenses, such as a trip, training, customer visit, or monthly batch.
+- **Export Package**: the generated handoff file for one Expense Folder, including the entry spreadsheet, review notes, receipt copies, and missing-receipt declarations.
+
+The current app has the first V1 implementation of expenses, card reconciliation, and export packages. Expense Folder assignment is the next model upgrade and should become mandatory before an expense is considered export-ready.
+
 ## Current Capabilities
 
 - Mobile-first inbox, capture, cards, reports, and export screens
@@ -18,6 +28,13 @@ https://expense-me-tbo.vercel.app
 - Card statement import and matching
 - Swipe-left and detail-screen expense deletion with confirmation
 - Export package generation with receipts/declarations and review files
+
+## Documentation
+
+- [Decisions](docs/DECISIONS.md)
+- [V1/V2 Roadmap](docs/ROADMAP.md)
+- [Browser Harness Notes](docs/browser-harness.md)
+- [Original Product Spec](docs/superpowers/specs/2026-06-02-expense-me-design.md)
 
 ## Local Setup
 
@@ -34,3 +51,7 @@ Create a local `.env` file from `.env.example` when testing AgentMail sync.
 npm test
 npm run build
 ```
+
+## Deployment
+
+The production app is deployed on Vercel at `expense-me-tbo.vercel.app`. AgentMail credentials are configured as Vercel environment variables and must not be committed to the repository.
