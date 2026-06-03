@@ -37,6 +37,40 @@ Total $19.42
     expect(result.originalCurrency).toBe("USD");
   });
 
+  it("extracts Uber pickup and dropoff places into the receipt description", () => {
+    const result = parseReceiptText(`
+Uber
+Thursday, May 28, 2026
+Total $19.42
+Trip details
+Comfort
+33.71 miles, 53 minutes
+[https://tb-static.uber.com/prod/receipts/cdn/receipts-v4/Pickup-1.png]
+8:24 PM
+135 W Madison St, Chicago, IL 60602, US
+[https://tb-static.uber.com/prod/receipts/cdn/receipts-v4/Dropoff-1.png]
+9:18 PM
+105 E 4th Ave, Naperville, IL 60540, US
+    `);
+
+    expect(result.description).toBe("Uber: 135 W Madison St, Chicago, IL 60602, US -> 105 E 4th Ave, Naperville, IL 60540, US");
+  });
+
+  it("does not use email from and to headers as an Uber route", () => {
+    const result = parseReceiptText(`
+Subject: [Business] Your trip with Uber
+From: Uber Receipts
+To: Thiago
+
+Uber
+June 2, 2026
+Total $16.80
+    `);
+
+    expect(result.merchant).toBe("Uber");
+    expect(result.description).toBeUndefined();
+  });
+
   it("rejects invalid numeric receipt dates", () => {
     const result = parseReceiptText("Hotel Chicago\n99/99/2026\nTotal USD 184.20");
 
@@ -119,6 +153,28 @@ describe("email receipt expense conversion", () => {
     expect(bundle.expense.expenseType).toBe("Transport");
     expect(bundle.expense.subExpenseType).toBe("Taxi");
     expect(bundle.artifact.extractedText).toContain("Total $16.80");
+  });
+
+  it("uses Uber pickup and dropoff places as the email expense description", () => {
+    const bundle = createExpenseFromEmailMessage({
+      message_id: "<msg-route@example.com>",
+      subject: "[Business] Your Thursday evening trip with Uber",
+      timestamp: "2026-06-03T14:23:00.000Z",
+      text: `Uber
+June 2, 2026
+Total $16.80
+Trip details
+UberX
+[https://tb-static.uber.com/prod/receipts/cdn/receipts-v4/Pickup-1.png]
+7:04 AM
+350 5th Ave, New York, NY 10118, US
+[https://tb-static.uber.com/prod/receipts/cdn/receipts-v4/Dropoff-1.png]
+7:29 AM
+11 Wall St, New York, NY 10005, US`
+    });
+
+    expect(bundle.expense.merchant).toBe("Uber");
+    expect(bundle.expense.description).toBe("Uber: 350 5th Ave, New York, NY 10118, US -> 11 Wall St, New York, NY 10005, US");
   });
 
   it("repairs old summary-only email expenses while preserving folder and matching links", () => {

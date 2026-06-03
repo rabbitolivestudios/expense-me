@@ -23,7 +23,7 @@ export function createExpenseFromExtractedText(id: string, text: string, options
     country: "United States",
     city: "",
     merchant: parsed.merchant,
-    description: parsed.merchant ?? "Imported receipt",
+    description: parsed.description ?? parsed.merchant ?? "Imported receipt",
     paymentMethod: "Credit Card",
     originalAmount: amount,
     originalCurrency: currency,

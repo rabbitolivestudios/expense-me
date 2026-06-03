@@ -81,6 +81,9 @@ interface SwipeState {
 
 type RevealedAction = "assign" | "delete";
 type InboxFilter = "all" | "attention" | "declare" | "ready";
+type ExpenseDateListItem =
+  | { type: "separator"; key: string; label: string; year: string }
+  | { type: "expense"; expense: Expense };
 
 const filterDefs: { key: InboxFilter; label: string }[] = [
   { key: "all", label: "All" },
@@ -88,6 +91,70 @@ const filterDefs: { key: InboxFilter; label: string }[] = [
   { key: "declare", label: "No receipt" },
   { key: "ready", label: "Ready" }
 ];
+
+function parseExpenseDate(value: string) {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return undefined;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
+    ? date
+    : undefined;
+}
+
+function startOfWeek(date: Date) {
+  const weekStart = new Date(date);
+  const daysSinceMonday = (weekStart.getUTCDay() + 6) % 7;
+  weekStart.setUTCDate(weekStart.getUTCDate() - daysSinceMonday);
+  return weekStart;
+}
+
+const weekFormatter = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+  timeZone: "UTC"
+});
+
+function dateGroupForExpense(expense: Expense) {
+  const date = parseExpenseDate(expense.expenseDate);
+  if (!date) {
+    return {
+      key: "unknown",
+      label: "Date pending",
+      year: "Review"
+    };
+  }
+
+  const weekStart = startOfWeek(date);
+  const year = String(date.getUTCFullYear());
+
+  return {
+    key: `${year}-${weekStart.toISOString().slice(0, 10)}`,
+    label: `Week of ${weekFormatter.format(weekStart)}`,
+    year
+  };
+}
+
+function expenseDateRows(expenses: Expense[]) {
+  const rows: ExpenseDateListItem[] = [];
+  let previousKey = "";
+
+  for (const expense of expenses) {
+    const group = dateGroupForExpense(expense);
+    if (group.key !== previousKey) {
+      rows.push({ type: "separator", ...group });
+      previousKey = group.key;
+    }
+
+    rows.push({ type: "expense", expense });
+  }
+
+  return rows;
+}
 
 export function InboxScreen({
   expenses,
@@ -143,6 +210,7 @@ export function InboxScreen({
     if (filter === "declare") return expense.status === "Declare";
     return expense.status === "Ready";
   });
+  const shownRows = expenseDateRows(shown);
 
   async function syncEmail() {
     setSyncing(true);
@@ -578,7 +646,12 @@ export function InboxScreen({
             </span>
           </article>
         )}
-        {shown.map(renderExpense)}
+        {shownRows.map((row) => row.type === "separator" ? (
+          <div className="expense-date-separator" role="separator" aria-label={`${row.label}, ${row.year}`} key={`date-${row.key}`}>
+            <span>{row.year}</span>
+            <strong>{row.label}</strong>
+          </div>
+        ) : renderExpense(row.expense))}
       </div>
     </section>
   );

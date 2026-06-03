@@ -20,9 +20,9 @@ The current app has the first V1 implementation of expenses, card reconciliation
 
 ## Current Capabilities
 
-- Mobile-first inbox, capture, cards, reports, and export screens
+- Mobile-first inbox, capture, cards, reports, and export screens, with week/year separators for the visible expense list
 - Camera/image/PDF/manual intake with browser-local OCR and PDF text extraction
-- AgentMail inbox sync for `expense-me@agentmail.to`, including full message detail parsing and repair of older summary-only imports
+- AgentMail inbox sync for `expense-me@agentmail.to`, including full message detail parsing, Uber pickup/dropoff descriptions, and repair of older summary-only imports
 - Company-style expense type, sub-expense type, region, and country fields
 - Meal attendee count support
 - Card statement import and matching

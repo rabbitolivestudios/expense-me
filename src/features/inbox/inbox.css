@@ -349,6 +349,34 @@
   margin-top: 4px;
 }
 
+.expense-date-separator {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 8px 2px -2px;
+  color: var(--text-muted);
+}
+
+.expense-date-separator::after {
+  content: "";
+  height: 1px;
+  flex: 1;
+  background: var(--border);
+}
+
+.expense-date-separator span {
+  font-family: var(--font-mono);
+  color: var(--text-faint);
+  font-size: 0.7rem;
+  font-weight: 800;
+}
+
+.expense-date-separator strong {
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
 .inline-status {
   margin: -8px 0 0;
   color: var(--st-ready);

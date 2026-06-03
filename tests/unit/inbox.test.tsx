@@ -62,6 +62,38 @@ describe("InboxScreen", () => {
     expect(await screen.findByText("Email synced. 2 receipts updated.")).toBeInTheDocument();
   });
 
+  it("separates inbox expenses by week and year", () => {
+    const expenses = [
+      { ...seedExpenses[0], id: "exp-2026-current", expenseDate: "2026-06-03", merchant: "Uber Wednesday" },
+      { ...seedExpenses[1], id: "exp-2026-prior", expenseDate: "2026-05-28", merchant: "Uber Prior Week" },
+      { ...seedExpenses[2], id: "exp-2025-old", expenseDate: "2025-12-30", merchant: "Uber Last Year" }
+    ];
+
+    render(
+      <InboxScreen
+        expenses={expenses}
+        reports={seedReports}
+        onCapture={() => undefined}
+        onAssignExpenseFolder={() => undefined}
+        onCreateExpenseFolder={() => undefined}
+        onRenameExpense={() => undefined}
+        onDeleteExpense={() => undefined}
+        onOpenCards={() => undefined}
+        onOpenExport={() => undefined}
+        onOpenExpense={() => undefined}
+        onSyncEmail={() => Promise.resolve(0)}
+        theme="light"
+        onToggleTheme={() => undefined}
+      />
+    );
+
+    expect(screen.getByText("Week of Jun 1")).toBeInTheDocument();
+    expect(screen.getByText("Week of May 25")).toBeInTheDocument();
+    expect(screen.getByText("Week of Dec 29")).toBeInTheDocument();
+    expect(screen.getAllByText("2026")).toHaveLength(2);
+    expect(screen.getByText("2025")).toBeInTheDocument();
+  });
+
   it("opens assign, rename, and delete actions after a long press on an expense", () => {
     vi.useFakeTimers();
     const openExpense = vi.fn();

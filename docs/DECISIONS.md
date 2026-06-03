@@ -34,11 +34,15 @@ Expected UI:
 - create a new Expense Folder when no suitable folder exists;
 - generate each Export Package from one selected Expense Folder.
 
+## Inbox Chronology
+
+The Inbox keeps the current visible expense order and inserts compact week/year separators when adjacent visible expenses cross into a different week. These separators are scan aids only; they should not change filtering, expense ordering, assignment, or export behavior.
+
 ## Intake Intelligence
 
 Current intake uses browser-local text extraction plus deterministic parsing and keyword categorization. Camera/image uploads run OCR in the browser with Tesseract.js. PDFs use embedded PDF text first and fall back to OCR for scanned pages.
 
-AgentMail intake must parse full message detail (`text`, `html`, `extracted_text`, or `extracted_html`) rather than list summaries. Summary-only imports are allowed to be repaired only when the new parse is at least as confident and has concrete receipt fields, so a low-confidence reparse cannot overwrite existing financial data.
+AgentMail intake must parse full message detail (`text`, `html`, `extracted_text`, or `extracted_html`) rather than list summaries. Summary-only imports are allowed to be repaired only when the new parse is at least as confident and has concrete receipt fields, so a low-confidence reparse cannot overwrite existing financial data. Uber receipt imports should keep merchant as `Uber` and, when the receipt includes pickup/dropoff places in the trip details block, use those places in the expense description.
 
 Target design:
 

@@ -1,5 +1,6 @@
 export interface ParsedReceipt {
   merchant?: string;
+  description?: string;
   expenseDate?: string;
   originalAmount?: number;
   originalCurrency?: string;
@@ -131,6 +132,78 @@ function isNoiseLine(line: string) {
     /^preview:/i.test(line);
 }
 
+function isUrlLine(line: string) {
+  return /^[[<]?https?:/i.test(line) || /https?:\/\//i.test(line);
+}
+
+function isRouteTimeLine(line: string) {
+  return /^\d{1,2}:\d{2}\s*(?:AM|PM)?$/i.test(line);
+}
+
+function isTripMetaLine(line: string) {
+  return /^trip details$/i.test(line) ||
+    /^\d+(?:\.\d+)?\s+miles?,\s+\d+\s+minutes?/i.test(line) ||
+    /^(uberx|comfort|black|business comfort|priority|wait & save|green|uberxl|share)$/i.test(line) ||
+    /^you rode with\b/i.test(line) ||
+    /^rate or tip\b/i.test(line) ||
+    /^when you ride with uber\b/i.test(line) ||
+    /^want to review your trip history\b/i.test(line) ||
+    /^need help\b/i.test(line);
+}
+
+function isRoutePlaceLine(line: string) {
+  return !isNoiseLine(line) &&
+    !isUrlLine(line) &&
+    !isRouteTimeLine(line) &&
+    !isTripMetaLine(line) &&
+    !/^total\b/i.test(line) &&
+    !/^\$?\d+(?:[.,]\d{2})?$/.test(line);
+}
+
+function findTripDetailsIndex(lines: string[]) {
+  return lines.findIndex((line) => /^trip details$/i.test(line));
+}
+
+function tripDetailLines(lines: string[], tripDetailsIndex: number) {
+  return tripDetailsIndex >= 0 ? lines.slice(tripDetailsIndex, tripDetailsIndex + 40) : lines;
+}
+
+function routePlaceAfterMarker(lines: string[], marker: RegExp, startAt = 0) {
+  const markerIndex = lines.findIndex((line, index) => index >= startAt && marker.test(line));
+  if (markerIndex < 0) return undefined;
+
+  for (const line of lines.slice(markerIndex + 1, markerIndex + 8)) {
+    if (isRoutePlaceLine(line)) return line;
+  }
+
+  return undefined;
+}
+
+function routePlaceFromLabel(lines: string[], label: RegExp) {
+  for (const line of lines) {
+    const match = line.match(label);
+    const place = match?.[1]?.trim();
+    if (place && isRoutePlaceLine(place)) return place;
+  }
+
+  return undefined;
+}
+
+function parseUberRouteDescription(text: string, lines: string[]) {
+  if (!/\bUber\b/i.test(text)) return undefined;
+
+  const tripDetailsIndex = findTripDetailsIndex(lines);
+  const routeLines = tripDetailLines(lines, tripDetailsIndex);
+  const pickup = routePlaceFromLabel(routeLines, /^(?:pickup|pick up)\s*:?\s*(.+)$/i) ??
+    (tripDetailsIndex >= 0 ? routePlaceFromLabel(routeLines, /^from\s*:?\s*(.+)$/i) : undefined) ??
+    routePlaceAfterMarker(routeLines, /pickup|pick.?up|origin/i);
+  const dropoff = routePlaceFromLabel(routeLines, /^(?:dropoff|drop off|destination)\s*:?\s*(.+)$/i) ??
+    (tripDetailsIndex >= 0 ? routePlaceFromLabel(routeLines, /^to\s*:?\s*(.+)$/i) : undefined) ??
+    routePlaceAfterMarker(routeLines, /dropoff|drop.?off|destination/i);
+
+  return pickup && dropoff ? `Uber: ${pickup} -> ${dropoff}` : undefined;
+}
+
 function parseMerchant(text: string, lines: string[]) {
   if (/\bUber\b/i.test(text)) {
     return "Uber";
@@ -156,9 +229,11 @@ export function parseReceiptText(text: string): ParsedReceipt {
   const date = parseDate(text);
   const amount = parseAmount(text);
   const currency = parseCurrency(text);
+  const description = parseUberRouteDescription(text, lines);
 
   return {
     merchant: parseMerchant(text, lines),
+    description,
     expenseDate: date,
     originalAmount: amount,
     originalCurrency: currency,
