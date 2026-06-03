@@ -67,3 +67,18 @@ npx clawpatch report
 ## Deployment
 
 The production app is deployed on Vercel at `expense-me-tbo.vercel.app`. AgentMail credentials are configured as Vercel environment variables and must not be committed to the repository. Shared app data and login should stay on free-tier infrastructure unless the product requirement changes.
+
+## V1.5 Cloudflare Setup
+
+V1 remains live on Vercel at `expense-me-tbo.vercel.app` as the fallback production app. V1.5 runs separately at `expense.mac-tbo.com` behind Cloudflare Access, with shared app data stored in Cloudflare D1 and binary artifacts stored in Cloudflare R2.
+
+Required Wrangler commands:
+
+```bash
+npm run cf:build
+npm run cf:dev
+npm run cf:d1:migrations
+npm run cf:deploy
+```
+
+Do not commit secret values, Cloudflare Access JWT audience values, AgentMail credentials, `.env` files, or local Wrangler state.

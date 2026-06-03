@@ -11,6 +11,10 @@
     "dev:client": "vite --host 127.0.0.1 --configLoader runner",
     "dev:server": "tsx watch server/index.ts",
     "build": "tsc -b && vite build --configLoader runner",
+    "cf:build": "npm run build",
+    "cf:dev": "npm run build && wrangler pages dev dist",
+    "cf:d1:migrations": "wrangler d1 migrations apply expense-me-v15 --local",
+    "cf:deploy": "npm run build && wrangler pages deploy dist --branch v15-single-source --commit-dirty=true --project-name expense-me-v15",
     "preview": "vite preview --host 127.0.0.1",
     "test": "vitest run --configLoader runner",
     "test:watch": "vitest --configLoader runner",
@@ -25,6 +29,7 @@
     "dexie": "^4.2.0",
     "dotenv": "^17.0.0",
     "express": "^5.1.0",
+    "jose": "^6.2.3",
     "jszip": "^3.10.1",
     "lucide-react": "^0.468.0",
     "multer": "^2.0.0",
@@ -40,6 +45,7 @@
     "zod": "^3.25.0"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260603.1",
     "@playwright/test": "^1.55.0",
     "@testing-library/jest-dom": "^6.6.0",
     "@testing-library/react": "^16.3.0",
@@ -53,6 +59,7 @@
     "fake-indexeddb": "^6.2.5",
     "jsdom": "^26.1.0",
     "typescript": "^5.8.0",
-    "vitest": "^4.1.8"
+    "vitest": "^4.1.8",
+    "wrangler": "^4.97.0"
   }
 }

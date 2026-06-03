@@ -1,0 +1,7 @@
+name = "expense-me-v15"
+compatibility_date = "2026-06-03"
+pages_build_output_dir = "dist"
+
+[vars]
+ENVIRONMENT = "production"
+APP_ORIGIN = "https://expense.mac-tbo.com"
