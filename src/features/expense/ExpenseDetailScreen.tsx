@@ -123,7 +123,7 @@ export function ExpenseDetailScreen({ expense, onBack, onCreateDeclaration, onCr
     setShowValidation(false);
     setConfirmingDelete(false);
     setNewFolderName("");
-  }, [expense]);
+  }, [expense.id]);
 
   const needsDeclaration = draft.receiptArtifactIds.length === 0 && !draft.declarationId;
   const isForeign = draft.originalCurrency !== "USD";

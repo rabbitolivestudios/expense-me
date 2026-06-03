@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import type { AppSnapshot } from "../../src/domain/types";
 import { seedArtifacts, seedExpenses, seedReports, seedStatementCharges } from "../fixtures";
 import {
@@ -45,6 +45,14 @@ const snapshot: AppSnapshot = {
 };
 
 describe("local V1 snapshot migration helpers", () => {
+  const originalLocalStorageDescriptor = Object.getOwnPropertyDescriptor(window, "localStorage");
+
+  afterEach(() => {
+    if (originalLocalStorageDescriptor) {
+      Object.defineProperty(window, "localStorage", originalLocalStorageDescriptor);
+    }
+  });
+
   it("reads a valid V1 localStorage snapshot and returns only AppSnapshot fields", () => {
     const storage = new MemoryStorage();
     storage.setItem(v1LocalStorageKey, JSON.stringify({ ...snapshot, exportPackages: [{ id: "export-1" }] }));
@@ -79,6 +87,17 @@ describe("local V1 snapshot migration helpers", () => {
     expect(readV1LocalSnapshot(storage)).toBeUndefined();
   });
 
+  it("returns undefined when the default localStorage getter throws", () => {
+    Object.defineProperty(window, "localStorage", {
+      configurable: true,
+      get() {
+        throw new Error("storage blocked");
+      }
+    });
+
+    expect(readV1LocalSnapshot()).toBeUndefined();
+  });
+
   it("tracks migration marker state", () => {
     const storage = new MemoryStorage();
 
@@ -97,5 +116,17 @@ describe("local V1 snapshot migration helpers", () => {
     } as unknown as Storage;
 
     expect(hasMigrationMarker(storage)).toBe(false);
+  });
+
+  it("treats default marker storage failures as no marker and no-op write", () => {
+    Object.defineProperty(window, "localStorage", {
+      configurable: true,
+      get() {
+        throw new Error("storage blocked");
+      }
+    });
+
+    expect(hasMigrationMarker()).toBe(false);
+    expect(() => markMigrationComplete()).not.toThrow();
   });
 });

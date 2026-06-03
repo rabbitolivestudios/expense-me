@@ -4,15 +4,14 @@ import {
   createDefaultReport,
   createExpenseFolderRecord,
   defaultFolderId,
-  normalizeExpensesWithReports,
-  reportLabelForExpenseIds,
-  syncReportsWithExpenses
+  reportLabelForExpenseIds
 } from "./app/appState";
 import type { ExpenseFolderDates } from "./app/appState";
+import { useExpenseMeCloudState } from "./app/useExpenseMeCloudState";
+import { normalizeCloudSnapshot } from "./cloudflare/appSnapshot";
+import type { CloudSnapshot } from "./cloudflare/types";
 import type { Expense, ReceiptArtifact, Report, StatementCharge } from "./domain/types";
 import { CaptureSheet } from "./features/capture/CaptureSheet";
-import { fetchAgentMailMessages } from "./features/email/agentMailSync";
-import { createExpenseFromEmailMessage, mergeEmailExpenseRepair, shouldRepairEmailExpense } from "./features/email/emailExpense";
 import { ExpenseDetailScreen } from "./features/expense/ExpenseDetailScreen";
 import { ExportScreen } from "./features/export/ExportScreen";
 import { InboxScreen } from "./features/inbox/InboxScreen";
@@ -24,139 +23,52 @@ import { useTheme } from "./features/shell/useTheme";
 import type { ScreenName } from "./features/shell/BottomNav";
 import "./styles/app.css";
 
-const storageKey = "expense-me-v1-live-state";
-const recoveryStorageKey = `${storageKey}:recovery`;
+const activeReportPreferenceKey = "expense-me-v15-active-report";
 
-interface PersistedAppState {
-  expenses: Expense[];
-  receiptArtifacts: ReceiptArtifact[];
-  reports: Report[];
-  statementCharges: StatementCharge[];
-  activeReportId?: string;
+function normalizeSnapshotParts(current: CloudSnapshot, parts: Partial<CloudSnapshot>) {
+  return normalizeCloudSnapshot({
+    ...current,
+    ...parts,
+    workspaceId: current.workspaceId,
+    userEmail: current.userEmail,
+    exportPackages: parts.exportPackages ?? current.exportPackages,
+    recordVersions: current.recordVersions
+  });
 }
 
-interface PersistedStateLoad {
-  state?: PersistedAppState;
-  failed: boolean;
-  raw?: string;
+function cloudUpdateError(_error: unknown) {
+  return undefined;
 }
 
-function requiredArray<T>(parsed: Partial<Record<keyof PersistedAppState, unknown>>, key: keyof PersistedAppState) {
-  const value = parsed[key];
-
-  return Array.isArray(value) ? (value as T[]) : undefined;
-}
-
-function optionalArray<T>(parsed: Partial<Record<keyof PersistedAppState, unknown>>, key: keyof PersistedAppState) {
-  const value = parsed[key];
-  if (value === undefined) return [];
-
-  return Array.isArray(value) ? (value as T[]) : undefined;
-}
-
-function migrateReports(parsed: Partial<Record<keyof PersistedAppState, unknown>>, expenses: Expense[]) {
-  const value = parsed.reports;
-
-  if (value === undefined) {
-    return [createDefaultReport(expenses.map((expense) => expense.id))];
-  }
-
-  return Array.isArray(value) ? cloneReports(value as Report[]) : undefined;
-}
-
-function loadPersistedState(): PersistedStateLoad {
-  let raw: string | null = null;
-
+function readActiveReportPreference() {
   try {
-    raw = window.localStorage.getItem(storageKey);
-    if (!raw) return { failed: false };
-
-    const parsed = JSON.parse(raw) as Partial<PersistedAppState>;
-    const expenses = requiredArray<Expense>(parsed, "expenses");
-    const receiptArtifacts = requiredArray<ReceiptArtifact>(parsed, "receiptArtifacts");
-    const statementCharges = optionalArray<StatementCharge>(parsed, "statementCharges");
-
-    if (!expenses || !receiptArtifacts || !statementCharges) {
-      return { failed: true, raw };
-    }
-    const reports = migrateReports(parsed, expenses);
-
-    if (!reports) return { failed: true, raw };
-
-    return {
-      failed: false,
-      state: {
-        expenses,
-        receiptArtifacts,
-        reports: cloneReports(reports),
-        statementCharges,
-        activeReportId: typeof parsed.activeReportId === "string" ? parsed.activeReportId : undefined
-      }
-    };
+    return window.localStorage.getItem(activeReportPreferenceKey) ?? defaultFolderId;
   } catch {
-    return { failed: true, raw: raw ?? undefined };
+    return defaultFolderId;
   }
 }
 
-function persistState(state: PersistedAppState) {
+function writeActiveReportPreference(reportId: string) {
   try {
-    window.localStorage.setItem(storageKey, JSON.stringify(state));
-    return true;
+    window.localStorage.setItem(activeReportPreferenceKey, reportId);
   } catch {
-    return false;
-  }
-}
-
-function backupFailedState(raw: string) {
-  try {
-    window.localStorage.setItem(
-      recoveryStorageKey,
-      JSON.stringify({
-        savedAt: new Date().toISOString(),
-        storageKey,
-        raw
-      })
-    );
-    return true;
-  } catch {
-    return false;
+    // The active folder preference is transient UI state; cloud data remains authoritative.
   }
 }
 
 export default function App() {
-  const [initialAppState] = useState(() => {
-    const persistedLoad = loadPersistedState();
-    const persistedState = persistedLoad.state;
-    const baseReports = persistedState?.reports?.length ? cloneReports(persistedState.reports) : [createDefaultReport()];
-    const initialExpenses = normalizeExpensesWithReports(persistedState?.expenses ?? [], baseReports);
-    const initialActiveReportId =
-      persistedState?.activeReportId && baseReports.some((report) => report.id === persistedState.activeReportId)
-        ? persistedState.activeReportId
-        : (baseReports[0]?.id ?? defaultFolderId);
-
-    return {
-      persistedState,
-      persistenceLoadFailed: persistedLoad.failed,
-      initialExpenses,
-      initialReports: syncReportsWithExpenses(baseReports, initialExpenses),
-      initialActiveReportId,
-      failedRawState: persistedLoad.raw
-    };
-  });
+  const cloudState = useExpenseMeCloudState();
   const [screen, setScreen] = useState<ScreenName>("Inbox");
-  const [expenses, setExpenses] = useState<Expense[]>(() => initialAppState.initialExpenses);
-  const expensesRef = useRef<Expense[]>(initialAppState.initialExpenses);
-  const [receiptArtifacts, setReceiptArtifacts] = useState<ReceiptArtifact[]>(() => initialAppState.persistedState?.receiptArtifacts ?? []);
-  const [reports, setReports] = useState<Report[]>(() => initialAppState.initialReports);
-  const reportsRef = useRef<Report[]>(initialAppState.initialReports);
-  const [activeReportId, setActiveReportId] = useState(initialAppState.initialActiveReportId);
-  const activeReportIdRef = useRef(initialAppState.initialActiveReportId);
-  const persistenceAllowedRef = useRef(!initialAppState.persistenceLoadFailed);
-  const failedRawStateRef = useRef(initialAppState.failedRawState);
-  const recoveryBackupSavedRef = useRef(false);
-  const [statementCharges, setStatementCharges] = useState<StatementCharge[]>(() => initialAppState.persistedState?.statementCharges ?? []);
+  const [activeReportId, setActiveReportId] = useState(readActiveReportPreference);
+  const activeReportIdRef = useRef(activeReportId);
   const [selectedExpenseId, setSelectedExpenseId] = useState<string | null>(null);
-  const [persistenceError, setPersistenceError] = useState(initialAppState.persistenceLoadFailed);
+  const snapshotRef = useRef(cloudState.snapshot);
+  const expenses = cloudState.snapshot.expenses;
+  const receiptArtifacts = cloudState.snapshot.receiptArtifacts;
+  const reports = cloudState.snapshot.reports;
+  const statementCharges = cloudState.snapshot.statementCharges;
+  const expensesRef = useRef(expenses);
+  const reportsRef = useRef(reports);
   const selectedExpense = expenses.find((expense) => expense.id === selectedExpenseId);
   const activeReport = reports.find((report) => report.id === activeReportId) ?? reports[0];
   const currentActiveReportId = activeReport?.id ?? defaultFolderId;
@@ -164,123 +76,75 @@ export default function App() {
   const emailSyncPromiseRef = useRef<Promise<number> | null>(null);
 
   useEffect(() => {
-    expensesRef.current = expenses;
-  }, [expenses]);
-
-  useEffect(() => {
-    reportsRef.current = reports;
-  }, [reports]);
+    snapshotRef.current = cloudState.snapshot;
+    expensesRef.current = cloudState.snapshot.expenses;
+    reportsRef.current = cloudState.snapshot.reports;
+  }, [cloudState.snapshot]);
 
   useEffect(() => {
     activeReportIdRef.current = currentActiveReportId;
   }, [currentActiveReportId]);
 
   useEffect(() => {
-    if (!persistenceAllowedRef.current) {
-      setPersistenceError(true);
-      return;
-    }
-    if (failedRawStateRef.current && !recoveryBackupSavedRef.current) {
-      const backedUp = backupFailedState(failedRawStateRef.current);
-      if (!backedUp) {
-        setPersistenceError(true);
-        return;
-      }
-      recoveryBackupSavedRef.current = true;
-    }
-
-    const persisted = persistState({ expenses, receiptArtifacts, reports, statementCharges, activeReportId: currentActiveReportId });
-    setPersistenceError(!persisted);
-  }, [expenses, receiptArtifacts, reports, statementCharges, currentActiveReportId]);
-
-  useEffect(() => {
-    if (reports.length > 0 && !reports.some((report) => report.id === activeReportId)) {
+    if (!cloudState.loading && reports.length > 0 && !reports.some((report) => report.id === activeReportId)) {
       changeActiveReport(reports[0].id);
     }
-  }, [reports, activeReportId]);
+  }, [cloudState.loading, reports, activeReportId]);
+
+  function setLocalSnapshot(parts: Partial<CloudSnapshot>) {
+    const nextSnapshot = normalizeSnapshotParts(snapshotRef.current, parts);
+    snapshotRef.current = nextSnapshot;
+    expensesRef.current = nextSnapshot.expenses;
+    reportsRef.current = nextSnapshot.reports;
+    cloudState.setSnapshot(nextSnapshot);
+  }
 
   function changeScreen(nextScreen: ScreenName) {
     setSelectedExpenseId(null);
     setScreen(nextScreen);
   }
 
-  function allowPersistenceAfterUserChange() {
-    persistenceAllowedRef.current = true;
-  }
-
-  function updateExpenses(updater: Expense[] | ((current: Expense[]) => Expense[])) {
-    allowPersistenceAfterUserChange();
-    setExpenses((current) => {
-      const nextExpenses = typeof updater === "function" ? updater(current) : updater;
-      expensesRef.current = nextExpenses;
-
-      return nextExpenses;
-    });
-  }
-
-  function updateReceiptArtifacts(updater: ReceiptArtifact[] | ((current: ReceiptArtifact[]) => ReceiptArtifact[])) {
-    allowPersistenceAfterUserChange();
-    setReceiptArtifacts((current) => (typeof updater === "function" ? updater(current) : updater));
-  }
-
-  function updateReports(updater: Report[] | ((current: Report[]) => Report[])) {
-    allowPersistenceAfterUserChange();
-    setReports((current) => {
-      const nextReports = typeof updater === "function" ? updater(current) : updater;
-      reportsRef.current = nextReports;
-
-      return nextReports;
-    });
-  }
-
-  function updateStatementCharges(updater: StatementCharge[] | ((current: StatementCharge[]) => StatementCharge[])) {
-    allowPersistenceAfterUserChange();
-    setStatementCharges((current) => (typeof updater === "function" ? updater(current) : updater));
-  }
-
   function changeActiveReport(reportId: string) {
-    allowPersistenceAfterUserChange();
     activeReportIdRef.current = reportId;
+    writeActiveReportPreference(reportId);
     setActiveReportId(reportId);
   }
 
   function saveExpense(updatedExpense: Expense) {
-    updateExpenses((current) => current.map((expense) => (expense.id === updatedExpense.id ? updatedExpense : expense)));
-    updateReports((current) =>
-      current.map((report) => ({
-        ...report,
-        expenseIds:
-          report.id === updatedExpense.reportId
-            ? [updatedExpense.id, ...report.expenseIds.filter((id) => id !== updatedExpense.id)]
-            : report.expenseIds.filter((id) => id !== updatedExpense.id)
-      })).map((report) => ({ ...report, dateRangeLabel: reportLabelForExpenseIds(report, report.expenseIds) }))
-    );
+    const nextExpenses = expensesRef.current.map((expense) => (expense.id === updatedExpense.id ? updatedExpense : expense));
+
+    setLocalSnapshot({ expenses: nextExpenses });
+    void cloudState.saveExpense(updatedExpense).catch(cloudUpdateError);
     setSelectedExpenseId(null);
   }
 
   function assignExpenseFolder(expenseId: string, reportId: string) {
-    updateExpenses((current) => current.map((expense) => (expense.id === expenseId ? { ...expense, reportId } : expense)));
-    updateReports((current) =>
-      current.map((report) => ({
-        ...report,
-        expenseIds: report.id === reportId ? [expenseId, ...report.expenseIds.filter((id) => id !== expenseId)] : report.expenseIds.filter((id) => id !== expenseId)
-      })).map((report) => ({ ...report, dateRangeLabel: reportLabelForExpenseIds(report, report.expenseIds) }))
-    );
+    const updatedExpense = expensesRef.current.find((expense) => expense.id === expenseId);
+    if (!updatedExpense) return;
+
+    const nextExpense = { ...updatedExpense, reportId };
+    const nextExpenses = expensesRef.current.map((expense) => (expense.id === expenseId ? nextExpense : expense));
+    setLocalSnapshot({ expenses: nextExpenses });
+    void cloudState.saveExpense(nextExpense).catch(cloudUpdateError);
   }
 
   function renameExpense(expenseId: string, name: string) {
     const trimmedName = name.trim();
     if (!trimmedName) return;
 
-    updateExpenses((current) =>
-      current.map((expense) =>
-        expense.id === expenseId
-          ? expense.merchant
-            ? { ...expense, merchant: trimmedName }
-            : { ...expense, description: trimmedName }
-          : expense
-      )
+    const nextExpenses = expensesRef.current.map((expense) =>
+      expense.id === expenseId
+        ? expense.merchant
+          ? { ...expense, merchant: trimmedName }
+          : { ...expense, description: trimmedName }
+        : expense
     );
+    const updatedExpense = nextExpenses.find((expense) => expense.id === expenseId);
+
+    setLocalSnapshot({ expenses: nextExpenses });
+    if (updatedExpense) {
+      void cloudState.saveExpense(updatedExpense).catch(cloudUpdateError);
+    }
   }
 
   function createExpenseFolder(name: string, dates: ExpenseFolderDates = {}) {
@@ -288,7 +152,8 @@ export default function App() {
     const report = createExpenseFolderRecord(name, dates, new Date(), existingIds);
     if (!report) return undefined;
 
-    updateReports((current) => [report, ...current]);
+    setLocalSnapshot({ reports: [report, ...reportsRef.current] });
+    void cloudState.saveExpenseFolder(report).catch(cloudUpdateError);
     return report;
   }
 
@@ -296,25 +161,29 @@ export default function App() {
     const trimmedName = name.trim();
     if (!trimmedName) return;
 
-    updateReports((current) =>
-      current.map((report) => {
-        if (report.id !== reportId) return report;
+    let updatedReport: Report | undefined;
+    const nextReports = reportsRef.current.map((report) => {
+      if (report.id !== reportId) return report;
 
-        const startDate = dates ? dates.startDate || undefined : report.startDate;
-        const endDate = dates ? dates.endDate || startDate : report.endDate;
+      const startDate = dates ? dates.startDate || undefined : report.startDate;
+      const endDate = dates ? dates.endDate || startDate : report.endDate;
 
-        const updatedReport = {
-          ...report,
-          name: trimmedName,
-          startDate,
-          endDate,
-          dateRangeLabel: ""
-        };
-        updatedReport.dateRangeLabel = reportLabelForExpenseIds(updatedReport, updatedReport.expenseIds);
+      updatedReport = {
+        ...report,
+        name: trimmedName,
+        startDate,
+        endDate,
+        dateRangeLabel: ""
+      };
+      updatedReport.dateRangeLabel = reportLabelForExpenseIds(updatedReport, updatedReport.expenseIds);
 
-        return updatedReport;
-      })
-    );
+      return updatedReport;
+    });
+
+    setLocalSnapshot({ reports: nextReports });
+    if (updatedReport) {
+      void cloudState.saveExpenseFolder(updatedReport).catch(cloudUpdateError);
+    }
   }
 
   function deleteExpenseFolder(reportId: string) {
@@ -325,7 +194,8 @@ export default function App() {
     if (!target || target.expenseIds.length > 0) return;
 
     const nextReports = currentReports.filter((report) => report.id !== reportId);
-    updateReports(nextReports);
+    setLocalSnapshot({ reports: nextReports });
+    void cloudState.deleteExpenseFolder(reportId).catch(cloudUpdateError);
 
     if (activeReportIdRef.current === reportId && nextReports[0]) {
       changeActiveReport(nextReports[0].id);
@@ -333,30 +203,21 @@ export default function App() {
   }
 
   function deleteExpense(expenseId: string) {
-    const deletedExpense = expenses.find((expense) => expense.id === expenseId);
-    const nextExpenses = expenses.filter((expense) => expense.id !== expenseId);
+    const deletedExpense = expensesRef.current.find((expense) => expense.id === expenseId);
+    const nextExpenses = expensesRef.current.filter((expense) => expense.id !== expenseId);
     const usedArtifactIds = new Set(nextExpenses.flatMap((expense) => expense.receiptArtifactIds));
-
-    updateExpenses(nextExpenses);
-    updateReceiptArtifacts((current) => current.filter((artifact) => usedArtifactIds.has(artifact.id)));
-    updateReports((current) =>
-      current.map((report) => {
-        const expenseIds = report.expenseIds.filter((id) => id !== expenseId);
-
-        return {
-          ...report,
-          expenseIds,
-          dateRangeLabel: reportLabelForExpenseIds(report, expenseIds)
-        };
-      })
+    const nextCharges = statementCharges.map((charge) =>
+      charge.matchedExpenseId === expenseId || charge.id === deletedExpense?.statementChargeMatchId
+        ? { ...charge, matchStatus: "Unmatched" as const, matchedExpenseId: undefined }
+        : charge
     );
-    updateStatementCharges((current) =>
-      current.map((charge) =>
-        charge.matchedExpenseId === expenseId || charge.id === deletedExpense?.statementChargeMatchId
-          ? { ...charge, matchStatus: "Unmatched", matchedExpenseId: undefined }
-          : charge
-      )
-    );
+
+    setLocalSnapshot({
+      expenses: nextExpenses,
+      receiptArtifacts: receiptArtifacts.filter((artifact) => usedArtifactIds.has(artifact.id)),
+      statementCharges: nextCharges
+    });
+    void cloudState.deleteExpense(expenseId).catch(cloudUpdateError);
     setSelectedExpenseId(null);
     setScreen("Inbox");
   }
@@ -367,95 +228,33 @@ export default function App() {
       declarationId: `decl-${expense.id}`,
       status: "Ready"
     };
-    updateExpenses((current) => current.map((item) => (item.id === expense.id ? updatedExpense : item)));
-  }
+    const nextExpenses = expensesRef.current.map((item) => (item.id === expense.id ? updatedExpense : item));
+    const nextReports = reportsRef.current.map((report) => ({
+      ...report,
+      expenseIds:
+        report.id === updatedExpense.reportId
+          ? [updatedExpense.id, ...report.expenseIds.filter((id) => id !== updatedExpense.id)]
+          : report.expenseIds.filter((id) => id !== updatedExpense.id)
+    })).map((report) => ({ ...report, dateRangeLabel: reportLabelForExpenseIds(report, report.expenseIds) }));
 
-  function addExpensesToCurrentReport(expenseIds: string[], reportId = currentActiveReportId) {
-    if (expenseIds.length === 0) return;
-
-    updateReports((current) => {
-      if (current.length === 0) {
-        return [createDefaultReport(expenseIds)];
-      }
-
-      return current.map((report, index) =>
-        report.id === reportId || (index === 0 && !current.some((item) => item.id === reportId))
-          ? {
-              ...report,
-              expenseIds: [...expenseIds.filter((id) => !report.expenseIds.includes(id)), ...report.expenseIds]
-            }
-          : report
-      ).map((report) => ({ ...report, dateRangeLabel: reportLabelForExpenseIds(report, report.expenseIds) }));
-    });
+    setLocalSnapshot({ expenses: nextExpenses, reports: nextReports });
+    void cloudState.saveExpense(updatedExpense).catch(cloudUpdateError);
   }
 
   function addExpense(expense: Expense, artifacts: ReceiptArtifact[] = []) {
     const reportId = currentActiveReportId;
     const assignedExpense = { ...expense, reportId };
 
-    updateExpenses((current) => [assignedExpense, ...current]);
-    if (artifacts.length > 0) {
-      updateReceiptArtifacts((current) => [
+    setLocalSnapshot({
+      expenses: [assignedExpense, ...expensesRef.current],
+      receiptArtifacts: [
         ...artifacts,
-        ...current.filter((artifact) => !artifacts.some((nextArtifact) => nextArtifact.id === artifact.id))
-      ]);
-    }
-    addExpensesToCurrentReport([assignedExpense.id], reportId);
+        ...receiptArtifacts.filter((artifact) => !artifacts.some((nextArtifact) => nextArtifact.id === artifact.id))
+      ]
+    });
+    void cloudState.saveExpense(assignedExpense, artifacts).catch(cloudUpdateError);
     setSelectedExpenseId(assignedExpense.id);
     setScreen("Inbox");
-  }
-
-  async function runEmailSync(targetReportId: string) {
-    const messages = await fetchAgentMailMessages();
-    const emailBundles = messages.map(createExpenseFromEmailMessage);
-    const existingExpensesById = new Map(expensesRef.current.map((expense) => [expense.id, expense]));
-    const newBundles = emailBundles.filter((bundle) => !existingExpensesById.has(bundle.expense.id));
-    const repairBundles = emailBundles
-      .map((bundle) => ({ bundle, existing: existingExpensesById.get(bundle.expense.id) }))
-      .filter((item): item is { bundle: (typeof emailBundles)[number]; existing: Expense } =>
-        item.existing !== undefined && shouldRepairEmailExpense(item.existing, item.bundle.expense)
-    );
-
-    if (newBundles.length > 0 || repairBundles.length > 0) {
-      const liveReports = reportsRef.current;
-      const reportId = liveReports.some((report) => report.id === targetReportId)
-        ? targetReportId
-        : (liveReports[0]?.id ?? defaultFolderId);
-      const emailExpenses = newBundles.map((bundle) => ({ ...bundle.expense, reportId }));
-      const repairs = repairBundles.map(({ bundle, existing }) => {
-        const receiptArtifactIds = existing.receiptArtifactIds.length > 0 ? existing.receiptArtifactIds : bundle.expense.receiptArtifactIds;
-        const artifactId = receiptArtifactIds[0] ?? bundle.artifact.id;
-        const hasValidFolder = Boolean(
-          existing.reportId &&
-          liveReports.some((report) => report.id === existing.reportId && report.expenseIds.includes(existing.id))
-        );
-        const repairedExpense = mergeEmailExpenseRepair(existing, bundle.expense, receiptArtifactIds);
-
-        return {
-          expense: hasValidFolder ? repairedExpense : { ...repairedExpense, reportId },
-          artifact: { ...bundle.artifact, id: artifactId },
-          addToReport: !hasValidFolder
-        };
-      });
-      const repairedExpensesById = new Map(repairs.map((repair) => [repair.expense.id, repair.expense]));
-      const emailArtifacts = [...newBundles.map((bundle) => bundle.artifact), ...repairs.map((repair) => repair.artifact)];
-      const expenseIdsForReport = [
-        ...emailExpenses.map((expense) => expense.id),
-        ...repairs.filter((repair) => repair.addToReport).map((repair) => repair.expense.id)
-      ];
-
-      updateExpenses((current) => [
-        ...emailExpenses,
-        ...current.map((expense) => repairedExpensesById.get(expense.id) ?? expense)
-      ]);
-      updateReceiptArtifacts((current) => [
-        ...emailArtifacts,
-        ...current.filter((artifact) => !emailArtifacts.some((nextArtifact) => nextArtifact.id === artifact.id))
-      ]);
-      addExpensesToCurrentReport(expenseIdsForReport, reportId);
-    }
-
-    return newBundles.length + repairBundles.length;
   }
 
   function syncEmail() {
@@ -464,14 +263,18 @@ export default function App() {
     }
 
     const targetReportId = currentActiveReportId;
-    emailSyncPromiseRef.current = runEmailSync(targetReportId).finally(() => {
-      emailSyncPromiseRef.current = null;
-    });
+    const beforeIds = new Set(snapshotRef.current.expenses.map((expense) => expense.id));
+    emailSyncPromiseRef.current = cloudState.syncEmail(targetReportId)
+      .then((nextSnapshot) => nextSnapshot.expenses.filter((expense) => !beforeIds.has(expense.id)).length)
+      .finally(() => {
+        emailSyncPromiseRef.current = null;
+      });
 
     return emailSyncPromiseRef.current;
   }
 
   function importStatementCharges(charges: StatementCharge[]) {
+    const beforeExpenseIds = new Set(expensesRef.current.map((expense) => expense.id));
     const reconciled = reconcileStatementCharges(expensesRef.current, charges);
     const reportId = currentActiveReportId;
     const createdExpenseIds = new Set(reconciled.createdExpenseIds);
@@ -479,25 +282,48 @@ export default function App() {
       createdExpenseIds.has(expense.id) && !expense.reportId ? { ...expense, reportId } : expense
     );
 
-    updateExpenses(nextExpenses);
-    updateStatementCharges((current) => [
-      ...reconciled.charges,
-      ...current.filter((charge) => !reconciled.charges.some((nextCharge) => nextCharge.id === charge.id))
-    ]);
-    addExpensesToCurrentReport(reconciled.createdExpenseIds, reportId);
+    setLocalSnapshot({
+      expenses: nextExpenses,
+      statementCharges: [
+        ...reconciled.charges,
+        ...statementCharges.filter((charge) => !reconciled.charges.some((nextCharge) => nextCharge.id === charge.id))
+      ]
+    });
+    void cloudState.importStatementCharges(charges, reportId).catch(cloudUpdateError);
 
     return {
       importedCount: charges.length,
       matchedCount: reconciled.matchedExpenseIds.length,
-      createdCount: reconciled.createdExpenseIds.length
+      createdCount: nextExpenses.filter((expense) => !beforeExpenseIds.has(expense.id)).length
     };
+  }
+
+  async function generateCloudExportPackage(reportId: string) {
+    const result = await cloudState.createExportPackage(reportId);
+    const link = document.createElement("a");
+    link.href = result.downloadUrl;
+    link.download = `Expense-Me-${result.exportPackage.id}.zip`;
+    link.click();
   }
 
   return (
     <AppShell active={screen} onChange={changeScreen}>
-      {persistenceError && (
+      {cloudState.error && (
         <div className="persistence-alert" role="alert">
-          Changes are not being saved. Check browser storage before closing this app.
+          {cloudState.error}
+        </div>
+      )}
+      {cloudState.loading && (
+        <div className="persistence-alert" role="status">
+          Loading cloud data...
+        </div>
+      )}
+      {cloudState.localSnapshotForMigration && (
+        <div className="persistence-alert" role="alert">
+          V1 browser data is available to import into cloud data.
+          <button type="button" onClick={() => void cloudState.migrateLocalSnapshot()}>
+            Import V1 Data
+          </button>
         </div>
       )}
       {selectedExpense && (
@@ -560,6 +386,7 @@ export default function App() {
           expenses={expenses}
           receiptArtifacts={receiptArtifacts}
           onBack={() => changeScreen("Inbox")}
+          onGenerateExportPackage={generateCloudExportPackage}
         />
       )}
     </AppShell>

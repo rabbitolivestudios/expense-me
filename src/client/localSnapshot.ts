@@ -3,9 +3,16 @@ import type { AppSnapshot } from "../domain/types";
 export const v1LocalStorageKey = "expense-me-v1-live-state";
 export const v15MigrationMarkerKey = "expense-me-v15-cloud-migration";
 
-export function readV1LocalSnapshot(storage: Storage = window.localStorage): AppSnapshot | undefined {
+function localStorageFor(storage?: Storage) {
+  if (storage) return storage;
+  if (typeof window === "undefined") return undefined;
+  return window.localStorage;
+}
+
+export function readV1LocalSnapshot(storage?: Storage): AppSnapshot | undefined {
   try {
-    const raw = storage.getItem(v1LocalStorageKey);
+    const resolvedStorage = localStorageFor(storage);
+    const raw = resolvedStorage?.getItem(v1LocalStorageKey);
     if (!raw) return undefined;
 
     const parsed = JSON.parse(raw) as Partial<AppSnapshot>;
@@ -29,17 +36,17 @@ export function readV1LocalSnapshot(storage: Storage = window.localStorage): App
   }
 }
 
-export function hasMigrationMarker(storage: Storage = window.localStorage) {
+export function hasMigrationMarker(storage?: Storage) {
   try {
-    return storage.getItem(v15MigrationMarkerKey) === "complete";
+    return localStorageFor(storage)?.getItem(v15MigrationMarkerKey) === "complete";
   } catch {
     return false;
   }
 }
 
-export function markMigrationComplete(storage: Storage = window.localStorage) {
+export function markMigrationComplete(storage?: Storage) {
   try {
-    storage.setItem(v15MigrationMarkerKey, "complete");
+    localStorageFor(storage)?.setItem(v15MigrationMarkerKey, "complete");
   } catch {
     // Local marker persistence is best-effort for restricted storage modes.
   }

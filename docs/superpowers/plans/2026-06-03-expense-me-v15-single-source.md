@@ -44,9 +44,11 @@ Continuation update:
 
 - Task 6A is complete: `origin/main` V1 hotfix commit `b6be02e` was merged into `v15-single-source` and verified.
 - Task 7 is complete: `src/client/cloudRepository.ts` and client wrapper tests were added in `c8a3027 feat: add cloud client repository`.
-- Task 9 backend/API work is implemented for Expenses with artifacts, Expense Folder routes, receipt upload, and statement import with reconciliation. Frontend cloud-state wiring is still pending in Task 8.
-- Task 10 backend/API work is implemented for server-side AgentMail sync through `POST /api/email/sync`, including server-side credentials, idempotent imports, R2-backed email body artifacts, and `sync_runs`. V1.5 frontend still needs to call `CloudRepository.syncEmail()` after Task 8.
-- Task 11 backend route support is partially implemented: `POST /api/export-packages` creates a cloud Export Package and returns `{ exportPackage, downloadUrl }`, and the authenticated download route returns the R2 ZIP. `ExportScreen` still needs to call the cloud export path after Task 8.
+- Task 8 frontend cloud-state wiring is implemented in the working tree: `App` now loads through `useExpenseMeCloudState`, mutations call `CloudRepository`, V1 migration is explicit, active Expense Folder remains a transient local preference, email sync calls `POST /api/email/sync`, and Export Package generation calls the cloud export route.
+- Task 9 backend/API work is implemented for Expenses with artifacts, Expense Folder routes, receipt upload, and statement import with reconciliation.
+- Task 10 backend/API work is implemented for server-side AgentMail sync through `POST /api/email/sync`, including server-side credentials, idempotent imports, R2-backed email body artifacts, and `sync_runs`.
+- Task 11 backend route support is implemented for frontend use: `POST /api/export-packages` creates a cloud Export Package and returns `{ exportPackage, downloadUrl }`, and the authenticated download route returns the R2 ZIP.
+- V1 production hotfix `6f39eb6 fix: sync declaration folder membership` is live on `origin/main`; the same declaration membership behavior is carried into the V1.5 `App` changes in the current working tree.
 
 ## Target Files
 
@@ -1389,7 +1391,7 @@ git commit -m "feat: add cloud client repository"
 - Test: `tests/unit/useExpenseMeCloudState.test.tsx`
 - Test: `tests/unit/shell.test.tsx`
 
-- [ ] **Step 1: Create hook shell**
+- [x] **Step 1: Create hook shell**
 
 Create `src/app/useExpenseMeCloudState.ts` with:
 
@@ -1498,7 +1500,7 @@ export function useExpenseMeCloudState(repository = new CloudRepository()): Clou
 }
 ```
 
-- [ ] **Step 2: Refactor `src/App.tsx`**
+- [x] **Step 2: Refactor `src/App.tsx`**
 
 Replace local durable state and `persistState` calls with `useExpenseMeCloudState`.
 
@@ -1511,7 +1513,7 @@ Preserve these local-only states:
 
 All handlers that used `setExpenses`, `setReports`, `setReceiptArtifacts`, and `setStatementCharges` must call hook methods and then read the returned snapshot.
 
-- [ ] **Step 3: Add migration banner**
+- [x] **Step 3: Add migration banner**
 
 In `App.tsx`, render a small non-card banner only when `localSnapshotForMigration` exists:
 
@@ -1526,7 +1528,7 @@ In `App.tsx`, render a small non-card banner only when `localSnapshotForMigratio
 
 Style in `src/styles/app.css`. Keep the copy short and do not use instructional paragraphs.
 
-- [ ] **Step 4: Add hook tests**
+- [x] **Step 4: Add hook tests**
 
 Create `tests/unit/useExpenseMeCloudState.test.tsx` using React Testing Library `renderHook` if available; otherwise create a tiny test component. Verify:
 
@@ -1536,7 +1538,7 @@ Create `tests/unit/useExpenseMeCloudState.test.tsx` using React Testing Library 
 - migration posts snapshot and hides the migration action;
 - saveExpense updates the snapshot returned by the repository.
 
-- [ ] **Step 5: Verify existing flows**
+- [x] **Step 5: Verify existing flows**
 
 Run:
 
@@ -1552,6 +1554,17 @@ Commit:
 git add src/app/useExpenseMeCloudState.ts src/App.tsx src/styles/app.css tests/unit/useExpenseMeCloudState.test.tsx tests/unit/shell.test.tsx
 git commit -m "feat: load app state from cloud snapshot"
 ```
+
+Verification completed on 2026-06-03 before commit:
+
+```bash
+npm test -- tests/unit/shell.test.tsx
+npm test -- tests/unit/shell.test.tsx tests/unit/useExpenseMeCloudState.test.tsx tests/unit/localSnapshot.test.ts tests/unit/clientCloudRepository.test.ts tests/unit/cloudApi.test.ts
+npm test
+npm run build
+```
+
+Results: shell suite 27 passed, focused suite 65 passed, full suite 203 passed, and build/typecheck passed.
 
 ## Task 9: Cloud Mutation Routes For Expenses, Folders, Artifacts, And Statements
 

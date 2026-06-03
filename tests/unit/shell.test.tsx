@@ -1,12 +1,14 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { StrictMode } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../../src/App";
+import { normalizeCloudSnapshot } from "../../src/cloudflare/appSnapshot";
+import type { CloudSnapshot } from "../../src/cloudflare/types";
+import { reconcileStatementCharges } from "../../src/features/statements/reconciliation";
 import { seedArtifacts, seedExpenses, seedReports, seedStatementCharges } from "../fixtures";
 
 const appStorageKey = "expense-me-v1-live-state";
-const appRecoveryStorageKey = `${appStorageKey}:recovery`;
+const activeReportPreferenceKey = "expense-me-v15-active-report";
 
 function firePointer(element: Element, type: string, clientX: number) {
   fireEvent(element, new MouseEvent(type, { bubbles: true, cancelable: true, clientX }));
@@ -37,9 +39,185 @@ function storedAppState() {
   return JSON.parse(window.localStorage.getItem(appStorageKey) ?? "{}") as {
     activeReportId?: string;
     expenses?: typeof seedExpenses;
+    receiptArtifacts?: typeof seedArtifacts;
     reports?: typeof seedReports;
     statementCharges?: typeof seedStatementCharges;
   };
+}
+
+function stateFromStorage() {
+  const parsed = storedAppState();
+  const snapshot = normalizeCloudSnapshot({
+    workspaceId: "workspace-personal",
+    userEmail: "thiago@example.com",
+    expenses: parsed.expenses ?? [],
+    receiptArtifacts: parsed.receiptArtifacts ?? [],
+    reports: parsed.reports,
+    statementCharges: parsed.statementCharges ?? [],
+    exportPackages: [],
+    recordVersions: {}
+  });
+
+  return {
+    expenses: snapshot.expenses,
+    receiptArtifacts: snapshot.receiptArtifacts,
+    reports: snapshot.reports,
+    statementCharges: snapshot.statementCharges
+  };
+}
+
+function writeAppState(state: ReturnType<typeof stateFromStorage>) {
+  window.localStorage.setItem(appStorageKey, JSON.stringify(state));
+}
+
+function cloudSnapshotFromStorage(): CloudSnapshot {
+  const state = stateFromStorage();
+  const versionMap = (items: Array<{ id: string }>) => Object.fromEntries(items.map((item) => [item.id, 1]));
+
+  return normalizeCloudSnapshot({
+    workspaceId: "workspace-personal",
+    userEmail: "thiago@example.com",
+    expenses: state.expenses,
+    receiptArtifacts: state.receiptArtifacts,
+    reports: state.reports,
+    statementCharges: state.statementCharges,
+    exportPackages: [],
+    recordVersions: {
+      expenses: versionMap(state.expenses),
+      reports: versionMap(state.reports),
+      receiptArtifacts: versionMap(state.receiptArtifacts),
+      statementCharges: versionMap(state.statementCharges),
+      exportPackages: {}
+    }
+  });
+}
+
+function jsonResponse(body: unknown, status = 200) {
+  return Promise.resolve(new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" }
+  }));
+}
+
+function reportsWithExpenseMembership<T extends { id: string; expenseIds: string[] }>(reports: T[], expense: { id: string; reportId?: string }) {
+  return reports.map((report) => ({
+    ...report,
+    expenseIds:
+      report.id === expense.reportId
+        ? [expense.id, ...report.expenseIds.filter((id) => id !== expense.id)]
+        : report.expenseIds.filter((id) => id !== expense.id)
+  }));
+}
+
+function upsertStoredExpense(expense: (typeof seedExpenses)[number]) {
+  const state = stateFromStorage();
+  writeAppState({
+    ...state,
+    expenses: [expense, ...state.expenses.filter((item) => item.id !== expense.id)],
+    reports: reportsWithExpenseMembership(state.reports, expense)
+  });
+}
+
+function installCloudApiMock(options: { syncEmail?: (reportId?: string) => CloudSnapshot | Promise<CloudSnapshot> } = {}) {
+  vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    const method = init?.method ?? "GET";
+
+    if (url === "/api/bootstrap") {
+      return jsonResponse({ snapshot: cloudSnapshotFromStorage() });
+    }
+
+    if (url === "/api/expenses" && method === "POST") {
+      const body = JSON.parse(String(init?.body ?? "{}"));
+      const state = stateFromStorage();
+      const expense = body.expense;
+      const artifacts = body.artifacts ?? [];
+      writeAppState({
+        ...state,
+        expenses: [expense, ...state.expenses.filter((item) => item.id !== expense.id)],
+        reports: reportsWithExpenseMembership(state.reports, expense),
+        receiptArtifacts: [
+          ...artifacts,
+          ...state.receiptArtifacts.filter((item: { id: string }) => !artifacts.some((artifact: { id: string }) => artifact.id === item.id))
+        ]
+      });
+      return jsonResponse({ snapshot: cloudSnapshotFromStorage() });
+    }
+
+    if (url.startsWith("/api/expenses/") && method === "DELETE") {
+      const expenseId = decodeURIComponent(url.replace("/api/expenses/", "").split("?")[0]);
+      const state = stateFromStorage();
+      const expenses = state.expenses.filter((expense) => expense.id !== expenseId);
+      const usedArtifactIds = new Set(expenses.flatMap((expense) => expense.receiptArtifactIds));
+      writeAppState({
+        ...state,
+        expenses,
+        receiptArtifacts: state.receiptArtifacts.filter((artifact: { id: string }) => usedArtifactIds.has(artifact.id)),
+        statementCharges: state.statementCharges.map((charge) =>
+          charge.matchedExpenseId === expenseId ? { ...charge, matchStatus: "Unmatched", matchedExpenseId: undefined } : charge
+        )
+      });
+      return jsonResponse({ snapshot: cloudSnapshotFromStorage() });
+    }
+
+    if (url === "/api/expense-folders" && method === "POST") {
+      const body = JSON.parse(String(init?.body ?? "{}"));
+      const state = stateFromStorage();
+      const report = body.report;
+      writeAppState({
+        ...state,
+        reports: [report, ...state.reports.filter((item) => item.id !== report.id)]
+      });
+      return jsonResponse({ snapshot: cloudSnapshotFromStorage() });
+    }
+
+    if (url.startsWith("/api/expense-folders/") && method === "DELETE") {
+      const reportId = decodeURIComponent(url.replace("/api/expense-folders/", "").split("?")[0]);
+      const state = stateFromStorage();
+      const report = state.reports.find((item) => item.id === reportId);
+      if (report?.expenseIds.length) return jsonResponse({ error: "Expense Folder has expenses and cannot be deleted." }, 409);
+      writeAppState({ ...state, reports: state.reports.filter((item) => item.id !== reportId) });
+      return jsonResponse({ snapshot: cloudSnapshotFromStorage() });
+    }
+
+    if (url === "/api/statements/import" && method === "POST") {
+      const body = JSON.parse(String(init?.body ?? "{}"));
+      const state = stateFromStorage();
+      const reconciled = reconcileStatementCharges(state.expenses, body.charges ?? []);
+      writeAppState({ ...state, expenses: reconciled.expenses, statementCharges: reconciled.charges });
+      return jsonResponse({ snapshot: cloudSnapshotFromStorage() });
+    }
+
+    if (url === "/api/email/sync" && method === "POST") {
+      const body = init?.body ? JSON.parse(String(init.body)) : {};
+      const snapshot = await options.syncEmail?.(body.reportId);
+      return jsonResponse({ snapshot: snapshot ?? cloudSnapshotFromStorage() });
+    }
+
+    if (url === "/api/export-packages" && method === "POST") {
+      return jsonResponse({
+        exportPackage: {
+          id: "export-package-test",
+          reportId: JSON.parse(String(init?.body ?? "{}")).reportId,
+          generatedAt: "2026-06-03T18:00:00.000Z",
+          reviewPdfName: "review.txt",
+          spreadsheetName: "entry.csv",
+          receiptsZipName: "receipts.zip",
+          declarationPdfNames: [],
+          reconciliationNotesName: "reconciliation.txt"
+        },
+        downloadUrl: "/api/export-packages/export-package-test/download"
+      });
+    }
+
+    return jsonResponse({ error: `Unhandled test route ${method} ${url}` }, 404);
+  }));
+}
+
+async function renderLoadedApp(ui = <App />) {
+  const result = render(ui);
+  await waitFor(() => expect(screen.queryByText("Loading cloud data...")).not.toBeInTheDocument());
+  return result;
 }
 
 function seedFolderOnlyState() {
@@ -55,14 +233,18 @@ function seedFolderOnlyState() {
 }
 
 describe("mobile app shell", () => {
+  beforeEach(() => {
+    installCloudApiMock();
+  });
+
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
 
-  it("renders five bottom navigation actions with Capture centered", () => {
-    render(<App />);
+  it("renders five bottom navigation actions with Capture centered", async () => {
+    await renderLoadedApp();
 
     const nav = screen.getByRole("navigation", { name: "Primary" });
     expect(nav).toHaveTextContent("Inbox");
@@ -75,7 +257,7 @@ describe("mobile app shell", () => {
 
   it("returns to Inbox from a secondary section with the back icon", async () => {
     const user = userEvent.setup();
-    render(<App />);
+    await renderLoadedApp();
 
     await user.click(screen.getByRole("button", { name: "Reports" }));
     expect(screen.getByRole("heading", { name: "Expense Folders" })).toBeInTheDocument();
@@ -86,7 +268,7 @@ describe("mobile app shell", () => {
 
   it("creates a new Expense Folder from the folders screen", async () => {
     const user = userEvent.setup();
-    render(<App />);
+    await renderLoadedApp();
 
     await user.click(screen.getByRole("button", { name: "Reports" }));
     await user.type(screen.getByLabelText("New Expense Folder"), "June customer visits");
@@ -101,7 +283,7 @@ describe("mobile app shell", () => {
   it("creates distinct ids for same-name Expense Folders created in one millisecond", async () => {
     const user = userEvent.setup();
     vi.spyOn(Date, "now").mockReturnValue(1770000000000);
-    render(<App />);
+    await renderLoadedApp();
 
     await user.click(screen.getByRole("button", { name: "Reports" }));
     await user.type(screen.getByLabelText("New Expense Folder"), "Duplicate folder");
@@ -118,7 +300,7 @@ describe("mobile app shell", () => {
 
   it("renames and deletes an empty Expense Folder", async () => {
     const user = userEvent.setup();
-    render(<App />);
+    await renderLoadedApp();
 
     await user.click(screen.getByRole("button", { name: "Reports" }));
     await user.type(screen.getByLabelText("New Expense Folder"), "June customer visits");
@@ -136,13 +318,13 @@ describe("mobile app shell", () => {
     expect(screen.getByText("June 14, 2026")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Delete Expense Folder June customer visits updated" }));
-    expect(screen.queryByText("June customer visits updated")).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText("June customer visits updated")).not.toBeInTheDocument());
   });
 
   it("keeps Expense Folders with expenses from being deleted", async () => {
     const user = userEvent.setup();
     seedAppState();
-    render(<App />);
+    await renderLoadedApp();
 
     await user.click(screen.getByRole("button", { name: "Reports" }));
 
@@ -151,7 +333,7 @@ describe("mobile app shell", () => {
 
   it("opens card statement import from the Inbox quick action", async () => {
     const user = userEvent.setup();
-    render(<App />);
+    await renderLoadedApp();
 
     await user.click(screen.getByRole("button", { name: "Upload statement" }));
 
@@ -162,7 +344,7 @@ describe("mobile app shell", () => {
   it("saves edited expense details back to the inbox", async () => {
     const user = userEvent.setup();
     seedAppState();
-    render(<App />);
+    await renderLoadedApp();
 
     await user.click(screen.getByRole("button", { name: /Avec River North/i }));
     const city = screen.getByLabelText("City");
@@ -176,7 +358,7 @@ describe("mobile app shell", () => {
   it("shows and saves the required Expense Folder in expense details", async () => {
     const user = userEvent.setup();
     seedAppState();
-    render(<App />);
+    await renderLoadedApp();
 
     await user.click(screen.getByRole("button", { name: /Avec River North/i }));
     const folderSelect = screen.getByLabelText("Expense Folder");
@@ -192,7 +374,7 @@ describe("mobile app shell", () => {
   it("auto-assigns a manually created expense when one Expense Folder exists", async () => {
     const user = userEvent.setup();
     seedFolderOnlyState();
-    render(<App />);
+    await renderLoadedApp();
 
     await user.click(screen.getByRole("button", { name: "Capture receipt" }));
     await user.click(screen.getByRole("button", { name: "Manual Expense" }));
@@ -204,7 +386,7 @@ describe("mobile app shell", () => {
   it("uses the active Expense Folder for newly captured expenses", async () => {
     const user = userEvent.setup();
     seedAppState();
-    render(<App />);
+    await renderLoadedApp();
 
     await user.selectOptions(screen.getByLabelText("Active Expense Folder"), "report-customer-visit");
     await user.click(screen.getByRole("button", { name: "Capture receipt" }));
@@ -217,171 +399,39 @@ describe("mobile app shell", () => {
   it("persists the active Expense Folder choice across reloads", async () => {
     const user = userEvent.setup();
     seedAppState();
-    const { unmount } = render(<App />);
+    const { unmount } = await renderLoadedApp();
 
     await user.selectOptions(screen.getByLabelText("Active Expense Folder"), "report-customer-visit");
-    expect(storedAppState().activeReportId).toBe("report-customer-visit");
+    expect(window.localStorage.getItem(activeReportPreferenceKey)).toBe("report-customer-visit");
 
     unmount();
-    render(<App />);
+    await renderLoadedApp();
 
     expect(screen.getByLabelText("Active Expense Folder")).toHaveValue("report-customer-visit");
-  });
-
-  it("loads older persisted state missing statementCharges without erasing expenses", async () => {
-    window.localStorage.setItem(
-      appStorageKey,
-      JSON.stringify({
-        expenses: seedExpenses,
-        receiptArtifacts: seedArtifacts,
-        reports: seedReports
-      })
-    );
-
-    render(<App />);
-
-    expect(screen.getByRole("button", { name: /Avec River North/i })).toBeInTheDocument();
-    await waitFor(() => {
-      const saved = storedAppState();
-      expect(saved.expenses?.map((expense) => expense.id)).toContain("exp-meal-client-dinner");
-      expect(saved.statementCharges).toEqual([]);
-    });
-  });
-
-  it("migrates legacy persisted state missing Expense Folders into the default folder", async () => {
-    window.localStorage.setItem(
-      appStorageKey,
-      JSON.stringify({
-        expenses: seedExpenses,
-        receiptArtifacts: seedArtifacts,
-        statementCharges: seedStatementCharges
-      })
-    );
-
-    render(<App />);
-
-    expect(screen.getByRole("button", { name: /Avec River North/i })).toBeInTheDocument();
-    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-
-    await waitFor(() => {
-      const saved = storedAppState();
-      const defaultReport = saved.reports?.find((report) => report.id === "report-current");
-
-      expect(defaultReport?.expenseIds).toEqual(seedExpenses.map((expense) => expense.id));
-      expect(saved.expenses?.every((expense) => expense.reportId === "report-current")).toBe(true);
-      expect(saved.activeReportId).toBe("report-current");
-    });
-  });
-
-  it("reads persisted app state only during initialization", async () => {
-    const user = userEvent.setup();
-    seedAppState();
-    const getItem = vi.spyOn(window.localStorage, "getItem");
-
-    render(<App />);
-
-    expect(getItem.mock.calls.filter(([key]) => key === appStorageKey)).toHaveLength(1);
-
-    await user.selectOptions(screen.getByLabelText("Active Expense Folder"), "report-customer-visit");
-
-    expect(getItem.mock.calls.filter(([key]) => key === appStorageKey)).toHaveLength(1);
-  });
-
-  it("shows a warning when local persistence fails", async () => {
-    seedAppState();
-    vi.spyOn(window.localStorage, "setItem").mockImplementation(() => {
-      throw new Error("storage unavailable");
-    });
-
-    render(<App />);
-
-    expect(await screen.findByRole("alert")).toHaveTextContent("Changes are not being saved");
-  });
-
-  it("does not overwrite invalid persisted state on startup", async () => {
-    const invalidState = "{ invalid persisted expense state";
-    window.localStorage.setItem(appStorageKey, invalidState);
-
-    render(<App />);
-
-    expect(await screen.findByRole("alert")).toHaveTextContent("Changes are not being saved");
-    expect(window.localStorage.getItem(appStorageKey)).toBe(invalidState);
-  });
-
-  it("does not overwrite invalid persisted state during StrictMode remount", async () => {
-    const invalidState = "{ invalid persisted expense state";
-    window.localStorage.setItem(appStorageKey, invalidState);
-
-    render(
-      <StrictMode>
-        <App />
-      </StrictMode>
-    );
-
-    expect(await screen.findByRole("alert")).toHaveTextContent("Changes are not being saved");
-    expect(window.localStorage.getItem(appStorageKey)).toBe(invalidState);
-  });
-
-  it("does not overwrite malformed persisted state missing core arrays", async () => {
-    const malformedState = JSON.stringify({ reports: seedReports });
-    window.localStorage.setItem(appStorageKey, malformedState);
-
-    render(<App />);
-
-    expect(await screen.findByRole("alert")).toHaveTextContent("Changes are not being saved");
-    expect(window.localStorage.getItem(appStorageKey)).toBe(malformedState);
-  });
-
-  it("resumes saving after a user change when startup state was invalid", async () => {
-    const user = userEvent.setup();
-    const invalidState = "{ invalid persisted expense state";
-    window.localStorage.setItem(appStorageKey, invalidState);
-
-    render(<App />);
-
-    expect(await screen.findByRole("alert")).toHaveTextContent("Changes are not being saved");
-    await user.click(screen.getByRole("button", { name: "Reports" }));
-    await user.type(screen.getByLabelText("New Expense Folder"), "Recovered folder");
-    await user.click(screen.getByRole("button", { name: "Create Expense Folder" }));
-
-    await waitFor(() => {
-      const stored = JSON.parse(window.localStorage.getItem(appStorageKey) ?? "{}") as { reports?: Array<{ name: string }> };
-      const recovery = JSON.parse(window.localStorage.getItem(appRecoveryStorageKey) ?? "{}") as { raw?: string; storageKey?: string };
-
-      expect(stored.reports?.some((report) => report.name === "Recovered folder")).toBe(true);
-      expect(recovery.storageKey).toBe(appStorageKey);
-      expect(recovery.raw).toBe(invalidState);
-    });
   });
 
   it("syncs new email expenses into the active Expense Folder", async () => {
     const user = userEvent.setup();
     seedAppState();
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: RequestInfo | URL) => {
-        const url = String(input);
-        const body = url.includes("messageId=")
-          ? {
-              message: {
-                text: "Uber\nJune 3, 2026\nTrip fare $9.00\nTotal $10.00"
-              }
-            }
-          : {
-              messages: [
-                {
-                  message_id: "active-sync-1",
-                  subject: "[Business] Your Wednesday trip with Uber",
-                  timestamp: "2026-06-03T14:23:00.000Z"
-                }
-              ]
-            };
+    installCloudApiMock({
+      syncEmail: (reportId) => {
+        upsertStoredExpense({
+          ...seedExpenses[0],
+          id: "exp-email-active-sync-1",
+          sourceType: "Email",
+          merchant: "Uber",
+          description: "Uber trip",
+          originalAmount: 10,
+          finalUsdAmount: 10,
+          receiptArtifactIds: [],
+          reportId,
+          confidence: 0.9
+        });
+        return cloudSnapshotFromStorage();
+      }
+    });
 
-        return new Response(JSON.stringify(body), { status: 200 });
-      })
-    );
-
-    render(<App />);
+    await renderLoadedApp();
 
     await user.selectOptions(screen.getByLabelText("Active Expense Folder"), "report-customer-visit");
     await user.click(screen.getByRole("button", { name: /Sync expense-me@agentmail.to inbox/i }));
@@ -412,29 +462,7 @@ describe("mobile app shell", () => {
         ? { ...report, expenseIds: [emailExpense.id, ...report.expenseIds] }
         : report
     );
-    const detailResponse = createDeferred<Response>();
-    const fetchMock = vi.fn((input: RequestInfo | URL) => {
-      const url = String(input);
-
-      if (url.includes("messageId=")) {
-        return detailResponse.promise;
-      }
-
-      return Promise.resolve(
-        new Response(
-          JSON.stringify({
-            messages: [
-              {
-                message_id: "stale-sync-1",
-                subject: "[Business] Your Thursday evening trip with Uber",
-                timestamp: "2026-06-03T14:23:00.000Z"
-              }
-            ]
-          }),
-          { status: 200 }
-        )
-      );
-    });
+    const syncResponse = createDeferred<void>();
 
     window.localStorage.setItem(
       appStorageKey,
@@ -445,29 +473,31 @@ describe("mobile app shell", () => {
         statementCharges: seedStatementCharges
       })
     );
-    vi.stubGlobal("fetch", fetchMock);
+    installCloudApiMock({
+      syncEmail: async () => {
+        await syncResponse.promise;
+        const currentExpense = stateFromStorage().expenses.find((expense) => expense.id === emailExpense.id) ?? emailExpense;
+        upsertStoredExpense({
+          ...currentExpense,
+          merchant: "Uber",
+          originalAmount: 16.8,
+          finalUsdAmount: 16.8
+        });
+        return cloudSnapshotFromStorage();
+      }
+    });
 
-    render(<App />);
+    await renderLoadedApp();
 
     await user.click(screen.getByRole("button", { name: /Sync expense-me@agentmail.to inbox/i }));
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
 
     await user.click(screen.getByRole("button", { name: /Thursday evening trip with Uber/i }));
     await user.selectOptions(screen.getByLabelText("Expense Folder"), "report-customer-visit");
     await user.click(screen.getByRole("button", { name: "Save Expense" }));
 
     await act(async () => {
-      detailResponse.resolve(
-        new Response(
-          JSON.stringify({
-            message: {
-              text: "Uber\nJun 2, 2026\nTotal $16.80"
-            }
-          }),
-          { status: 200 }
-        )
-      );
-      await detailResponse.promise;
+      syncResponse.resolve(undefined);
+      await syncResponse.promise;
     });
 
     await waitFor(() => {
@@ -504,31 +534,20 @@ describe("mobile app shell", () => {
         statementCharges: seedStatementCharges
       })
     );
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: RequestInfo | URL) => {
-        const url = String(input);
-        const body = url.includes("messageId=")
-          ? {
-              message: {
-                text: "Uber\nJun 5, 2026\nTotal $21.10"
-              }
-            }
-          : {
-              messages: [
-                {
-                  message_id: "repair-unassigned-1",
-                  subject: "[Business] Your Friday morning trip with Uber",
-                  timestamp: "2026-06-05T14:23:00.000Z"
-                }
-              ]
-            };
+    installCloudApiMock({
+      syncEmail: (reportId) => {
+        upsertStoredExpense({
+          ...emailExpense,
+          merchant: "Uber",
+          originalAmount: 21.1,
+          finalUsdAmount: 21.1,
+          reportId
+        });
+        return cloudSnapshotFromStorage();
+      }
+    });
 
-        return new Response(JSON.stringify(body), { status: 200 });
-      })
-    );
-
-    render(<App />);
+    await renderLoadedApp();
 
     await user.click(screen.getByRole("button", { name: /Sync expense-me@agentmail.to inbox/i }));
 
@@ -552,29 +571,7 @@ describe("mobile app shell", () => {
       dateRangeLabel: "Add expenses to this folder",
       expenseIds: []
     };
-    const detailResponse = createDeferred<Response>();
-    const fetchMock = vi.fn((input: RequestInfo | URL) => {
-      const url = String(input);
-
-      if (url.includes("messageId=")) {
-        return detailResponse.promise;
-      }
-
-      return Promise.resolve(
-        new Response(
-          JSON.stringify({
-            messages: [
-              {
-                message_id: "deleted-folder-sync-1",
-                subject: "[Business] Your Wednesday trip with Uber",
-                timestamp: "2026-06-03T14:23:00.000Z"
-              }
-            ]
-          }),
-          { status: 200 }
-        )
-      );
-    });
+    const syncResponse = createDeferred<void>();
 
     window.localStorage.setItem(
       appStorageKey,
@@ -586,27 +583,38 @@ describe("mobile app shell", () => {
         statementCharges: seedStatementCharges
       })
     );
-    vi.stubGlobal("fetch", fetchMock);
+    window.localStorage.setItem(activeReportPreferenceKey, emptyReport.id);
+    installCloudApiMock({
+      syncEmail: async (reportId) => {
+        await syncResponse.promise;
+        const state = stateFromStorage();
+        const targetReportId = state.reports.some((report) => report.id === reportId) ? reportId : state.reports[0]?.id;
+        upsertStoredExpense({
+          ...seedExpenses[0],
+          id: "exp-email-deleted-folder-sync-1",
+          sourceType: "Email",
+          merchant: "Uber",
+          description: "Uber trip",
+          originalAmount: 10,
+          finalUsdAmount: 10,
+          receiptArtifactIds: [],
+          reportId: targetReportId,
+          confidence: 0.9
+        });
+        return cloudSnapshotFromStorage();
+      }
+    });
 
-    render(<App />);
+    await renderLoadedApp();
 
     await user.click(screen.getByRole("button", { name: /Sync expense-me@agentmail.to inbox/i }));
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
     await user.click(screen.getByRole("button", { name: "Reports" }));
     await user.click(screen.getByRole("button", { name: "Delete Expense Folder Empty Active Folder" }));
+    await waitFor(() => expect(storedAppState().reports?.some((report) => report.id === emptyReport.id)).toBe(false));
 
     await act(async () => {
-      detailResponse.resolve(
-        new Response(
-          JSON.stringify({
-            message: {
-              text: "Uber\nJun 3, 2026\nTotal $10.00"
-            }
-          }),
-          { status: 200 }
-        )
-      );
-      await detailResponse.promise;
+      syncResponse.resolve(undefined);
+      await syncResponse.promise;
     });
 
     await waitFor(() => {
@@ -621,51 +629,35 @@ describe("mobile app shell", () => {
   it("keeps email sync assigned to the folder active when sync started", async () => {
     const user = userEvent.setup();
     seedAppState();
-    const detailResponse = createDeferred<Response>();
-    vi.stubGlobal(
-      "fetch",
-      vi.fn((input: RequestInfo | URL) => {
-        const url = String(input);
+    const syncResponse = createDeferred<void>();
+    installCloudApiMock({
+      syncEmail: async (reportId) => {
+        await syncResponse.promise;
+        upsertStoredExpense({
+          ...seedExpenses[0],
+          id: "exp-email-active-at-start-1",
+          sourceType: "Email",
+          merchant: "Uber",
+          description: "Uber trip",
+          originalAmount: 10,
+          finalUsdAmount: 10,
+          receiptArtifactIds: [],
+          reportId,
+          confidence: 0.9
+        });
+        return cloudSnapshotFromStorage();
+      }
+    });
 
-        if (url.includes("messageId=")) {
-          return detailResponse.promise;
-        }
-
-        return Promise.resolve(
-          new Response(
-            JSON.stringify({
-              messages: [
-                {
-                  message_id: "active-at-start-1",
-                  subject: "[Business] Your Wednesday trip with Uber",
-                  timestamp: "2026-06-03T14:23:00.000Z"
-                }
-              ]
-            }),
-            { status: 200 }
-          )
-        );
-      })
-    );
-
-    render(<App />);
+    await renderLoadedApp();
 
     expect(screen.getByLabelText("Active Expense Folder")).toHaveValue("report-may-chicago");
     await user.click(screen.getByRole("button", { name: /Sync expense-me@agentmail.to inbox/i }));
     await user.selectOptions(screen.getByLabelText("Active Expense Folder"), "report-customer-visit");
 
     await act(async () => {
-      detailResponse.resolve(
-        new Response(
-          JSON.stringify({
-            message: {
-              text: "Uber\nJun 3, 2026\nTotal $10.00"
-            }
-          }),
-          { status: 200 }
-        )
-      );
-      await detailResponse.promise;
+      syncResponse.resolve(undefined);
+      await syncResponse.promise;
     });
 
     await waitFor(() => {
@@ -677,7 +669,7 @@ describe("mobile app shell", () => {
   it("reveals an Expense Folder assignment action with swipe right", async () => {
     const user = userEvent.setup();
     seedAppState();
-    render(<App />);
+    await renderLoadedApp();
 
     const expenseCard = screen.getByRole("button", { name: /Avec River North/i });
 
@@ -700,7 +692,7 @@ describe("mobile app shell", () => {
   it("creates and selects a new Expense Folder from inbox assignment", async () => {
     const user = userEvent.setup();
     seedAppState();
-    render(<App />);
+    await renderLoadedApp();
 
     const expenseCard = screen.getByRole("button", { name: /Avec River North/i });
 
@@ -721,13 +713,13 @@ describe("mobile app shell", () => {
   it("creates and selects a new Expense Folder from expense details", async () => {
     const user = userEvent.setup();
     seedAppState();
-    render(<App />);
+    await renderLoadedApp();
 
     await user.click(screen.getByRole("button", { name: /Avec River North/i }));
     await user.type(screen.getByLabelText("New Expense Folder"), "Conference follow-up");
     await user.click(screen.getByRole("button", { name: "Create and Select Expense Folder" }));
 
-    expect(screen.getByLabelText("Expense Folder")).toHaveDisplayValue("Conference follow-up");
+    await waitFor(() => expect(screen.getByLabelText("Expense Folder")).toHaveDisplayValue("Conference follow-up"));
 
     await user.click(screen.getByRole("button", { name: "Save Expense" }));
     await user.click(screen.getByRole("button", { name: /Avec River North/i }));
@@ -738,7 +730,7 @@ describe("mobile app shell", () => {
   it("reveals a trash action with swipe left and deletes after confirmation", async () => {
     const user = userEvent.setup();
     seedAppState();
-    render(<App />);
+    await renderLoadedApp();
 
     const expenseCard = screen.getByRole("button", { name: /Avec River North/i });
 
@@ -758,9 +750,9 @@ describe("mobile app shell", () => {
   });
 
   it("renames an expense from the inbox long-press action sheet", async () => {
-    vi.useFakeTimers();
     seedAppState();
-    render(<App />);
+    await renderLoadedApp();
+    vi.useFakeTimers();
 
     fireEvent.pointerDown(screen.getByRole("button", { name: /Avec River North/i }), { clientX: 140 });
     act(() => {
@@ -782,7 +774,7 @@ describe("mobile app shell", () => {
   it("deletes an expense from the detail screen after confirmation", async () => {
     const user = userEvent.setup();
     seedAppState();
-    render(<App />);
+    await renderLoadedApp();
 
     await user.click(screen.getByRole("button", { name: /Avec River North/i }));
     await user.click(screen.getByRole("button", { name: "Delete Expense" }));
@@ -796,7 +788,7 @@ describe("mobile app shell", () => {
   it("shows required-field feedback before saving incomplete company details", async () => {
     const user = userEvent.setup();
     seedAppState();
-    render(<App />);
+    await renderLoadedApp();
 
     await user.click(screen.getByRole("button", { name: /Avec River North/i }));
     await user.selectOptions(screen.getByLabelText("Region"), "Europe");
@@ -815,7 +807,7 @@ describe("mobile app shell", () => {
   it("enables Export Package generation after creating a missing receipt declaration", async () => {
     const user = userEvent.setup();
     seedAppState();
-    render(<App />);
+    await renderLoadedApp();
 
     await user.click(screen.getByRole("button", { name: "Export" }));
     expect(screen.getByRole("button", { name: "Generate Export Package" })).toBeDisabled();
@@ -829,10 +821,27 @@ describe("mobile app shell", () => {
     expect(screen.getByRole("button", { name: "Generate Export Package" })).toBeEnabled();
   });
 
+  it("keeps Expense Folder membership in sync when creating a declaration after changing folders", async () => {
+    const user = userEvent.setup();
+    seedAppState();
+    await renderLoadedApp();
+
+    await user.click(await screen.findByRole("button", { name: /Shell/i }));
+    await user.selectOptions(screen.getByLabelText("Expense Folder"), "report-customer-visit");
+    await user.click(screen.getByRole("button", { name: "Create Declaration" }));
+
+    await waitFor(() => {
+      const stored = storedAppState();
+      expect(stored.expenses?.find((expense) => expense.id === "exp-fuel-training")?.reportId).toBe("report-customer-visit");
+      expect(stored.reports?.find((report) => report.id === "report-customer-visit")?.expenseIds).toContain("exp-fuel-training");
+      expect(stored.reports?.find((report) => report.id === "report-may-chicago")?.expenseIds).not.toContain("exp-fuel-training");
+    });
+  });
+
   it("selects which Expense Folder is used for the Export Package", async () => {
     const user = userEvent.setup();
     seedAppState();
-    render(<App />);
+    await renderLoadedApp();
 
     await user.click(screen.getByRole("button", { name: "Export" }));
     expect(screen.getByRole("heading", { name: "Chicago Training - May 2026" })).toBeInTheDocument();

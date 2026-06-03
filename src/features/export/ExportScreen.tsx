@@ -10,9 +10,10 @@ interface ExportScreenProps {
   expenses: Expense[];
   receiptArtifacts: ReceiptArtifact[];
   onBack: () => void;
+  onGenerateExportPackage?: (reportId: string) => Promise<void>;
 }
 
-export function ExportScreen({ reports, expenses, receiptArtifacts, onBack }: ExportScreenProps) {
+export function ExportScreen({ reports, expenses, receiptArtifacts, onBack, onGenerateExportPackage }: ExportScreenProps) {
   const [selectedReportId, setSelectedReportId] = useState(reports[0]?.id ?? "");
   const [statusMessage, setStatusMessage] = useState("");
   const report = reports.find((item) => item.id === selectedReportId) ?? reports[0];
@@ -40,6 +41,12 @@ export function ExportScreen({ reports, expenses, receiptArtifacts, onBack }: Ex
 
   async function generatePackage() {
     setStatusMessage("Generating Export Package...");
+    if (onGenerateExportPackage) {
+      await onGenerateExportPackage(report.id);
+      setStatusMessage("Export Package downloaded.");
+      return;
+    }
+
     const archive = await buildExportPackageZip({
       report,
       expenses,

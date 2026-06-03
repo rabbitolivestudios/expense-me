@@ -6,6 +6,14 @@ export interface CloudExportPackageResult {
   downloadUrl: string;
 }
 
+function requireSnapshot(body: ApiSnapshotBody): CloudSnapshot {
+  if (!body.snapshot) {
+    throw new Error("Cloud snapshot response was invalid.");
+  }
+
+  return body.snapshot;
+}
+
 async function readApiJson<T>(response: Response): Promise<T> {
   if (!response.ok) {
     const body = await response.json().catch(() => undefined);
@@ -23,7 +31,7 @@ export class CloudRepository {
 
   async bootstrap(): Promise<CloudSnapshot> {
     const body = await readApiJson<ApiSnapshotBody>(await this.fetcher("/api/bootstrap"));
-    return body.snapshot;
+    return requireSnapshot(body);
   }
 
   async migrateLocalSnapshot(snapshot: AppSnapshot): Promise<CloudSnapshot> {
@@ -100,7 +108,7 @@ export class CloudRepository {
 
   private async snapshotFromMutation(input: string, init: RequestInit): Promise<CloudSnapshot> {
     const body = await readApiJson<ApiSnapshotBody>(await this.fetcher(input, init));
-    return body.snapshot;
+    return requireSnapshot(body);
   }
 }
 

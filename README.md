@@ -54,6 +54,8 @@ On the Inbox screen, tap the `expense-me@agentmail.to` sync strip or the refresh
 
 V1 stores app state in browser localStorage under `expense-me-v1-live-state`. If a malformed saved payload is recovered by later user changes, the original raw payload is first copied to `expense-me-v1-live-state:recovery`.
 
+V1.5 stores durable app state through the Cloudflare API/D1/R2 source of truth. Browser localStorage is limited to transient UI preferences such as theme, the active Expense Folder selector, and the V1 migration marker.
+
 ## Validation
 
 ```bash
