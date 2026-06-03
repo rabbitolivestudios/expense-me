@@ -109,8 +109,9 @@ Add these scripts without removing existing Vercel/Vite scripts:
 {
   "cf:build": "npm run build",
   "cf:dev": "npm run build && wrangler pages dev dist",
-  "cf:d1:migrations": "wrangler d1 migrations apply expense-me-v15 --local",
-  "cf:deploy": "npm run build && wrangler pages deploy dist --branch v15-single-source --commit-dirty=true --project-name expense-me-v15"
+  "cf:d1:migrations": "node -e \"const fs=require('fs'); const config=fs.readFileSync('wrangler.toml','utf8'); if (!config.includes('[[d1_databases]]')) { console.error('Create the D1 database and add the EXPENSE_ME_DB binding to wrangler.toml before applying migrations.'); process.exit(1); }\" && wrangler d1 migrations apply EXPENSE_ME_DB --local",
+  "cf:d1:migrations:remote": "wrangler d1 migrations apply EXPENSE_ME_DB --remote",
+  "cf:deploy": "npm run build && wrangler pages deploy dist --branch v15-single-source --project-name expense-me-v15"
 }
 ```
 
@@ -279,12 +280,14 @@ Required setup:
 npx wrangler login
 npx wrangler d1 create expense-me-v15
 npx wrangler r2 bucket create expense-me-v15-artifacts
-npx wrangler secret put ACCESS_TEAM_DOMAIN
-npx wrangler secret put ACCESS_AUD
-npx wrangler secret put ACCESS_ALLOWED_EMAIL
-npx wrangler secret put AGENTMAIL_API_KEY
-npx wrangler secret put AGENTMAIL_INBOX_ID
+npx wrangler pages secret put ACCESS_TEAM_DOMAIN --project-name expense-me-v15
+npx wrangler pages secret put ACCESS_AUD --project-name expense-me-v15
+npx wrangler pages secret put ACCESS_ALLOWED_EMAIL --project-name expense-me-v15
+npx wrangler pages secret put AGENTMAIL_API_KEY --project-name expense-me-v15
+npx wrangler pages secret put AGENTMAIL_INBOX_ID --project-name expense-me-v15
 ```
+
+After creating the D1 database, add the real `EXPENSE_ME_DB` binding and `EXPENSE_ME_ARTIFACTS` bucket binding to `wrangler.toml`, then apply migrations with `npm run cf:d1:migrations` and `npm run cf:d1:migrations:remote`.
 
 Do not commit secret values or local Wrangler state.
 ```
@@ -1733,8 +1736,8 @@ Add the `EXPENSE_ME_DB` D1 binding and `EXPENSE_ME_ARTIFACTS` R2 binding using t
 Run:
 
 ```bash
-npx wrangler d1 migrations apply expense-me-v15 --local
-npx wrangler d1 migrations apply expense-me-v15 --remote
+npm run cf:d1:migrations
+npm run cf:d1:migrations:remote
 ```
 
 Expected: migration `0001_v15_initial.sql` applied.
@@ -1744,11 +1747,11 @@ Expected: migration `0001_v15_initial.sql` applied.
 Run:
 
 ```bash
-npx wrangler secret put ACCESS_TEAM_DOMAIN
-npx wrangler secret put ACCESS_AUD
-npx wrangler secret put ACCESS_ALLOWED_EMAIL
-npx wrangler secret put AGENTMAIL_API_KEY
-npx wrangler secret put AGENTMAIL_INBOX_ID
+npx wrangler pages secret put ACCESS_TEAM_DOMAIN --project-name expense-me-v15
+npx wrangler pages secret put ACCESS_AUD --project-name expense-me-v15
+npx wrangler pages secret put ACCESS_ALLOWED_EMAIL --project-name expense-me-v15
+npx wrangler pages secret put AGENTMAIL_API_KEY --project-name expense-me-v15
+npx wrangler pages secret put AGENTMAIL_INBOX_ID --project-name expense-me-v15
 ```
 
 Do not echo secret values into terminal output, docs, or commits.

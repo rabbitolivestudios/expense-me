@@ -27,7 +27,19 @@ function createMemoryStorage(): Storage {
   };
 }
 
-if (typeof window.localStorage.clear !== "function") {
+function shouldInstallMemoryStorage() {
+  try {
+    return (
+      typeof window.localStorage.clear !== "function" ||
+      typeof window.localStorage.getItem !== "function" ||
+      typeof window.localStorage.setItem !== "function"
+    );
+  } catch {
+    return true;
+  }
+}
+
+if (shouldInstallMemoryStorage()) {
   Object.defineProperty(window, "localStorage", {
     configurable: true,
     value: createMemoryStorage()

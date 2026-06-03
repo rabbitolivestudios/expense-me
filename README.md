@@ -78,11 +78,13 @@ Required Wrangler setup commands:
 npx wrangler login
 npx wrangler d1 create expense-me-v15
 npx wrangler r2 bucket create expense-me-v15-artifacts
-npx wrangler secret put ACCESS_TEAM_DOMAIN
-npx wrangler secret put ACCESS_AUD
-npx wrangler secret put ACCESS_ALLOWED_EMAIL
-npx wrangler secret put AGENTMAIL_API_KEY
-npx wrangler secret put AGENTMAIL_INBOX_ID
+npx wrangler pages secret put ACCESS_TEAM_DOMAIN --project-name expense-me-v15
+npx wrangler pages secret put ACCESS_AUD --project-name expense-me-v15
+npx wrangler pages secret put ACCESS_ALLOWED_EMAIL --project-name expense-me-v15
+npx wrangler pages secret put AGENTMAIL_API_KEY --project-name expense-me-v15
+npx wrangler pages secret put AGENTMAIL_INBOX_ID --project-name expense-me-v15
 ```
+
+After creating the D1 database, add the real `EXPENSE_ME_DB` binding and `EXPENSE_ME_ARTIFACTS` bucket binding to `wrangler.toml`, then apply migrations with `npm run cf:d1:migrations` and `npm run cf:d1:migrations:remote`.
 
 Do not commit secret values, Cloudflare Access JWT audience values, AgentMail credentials, `.env` files, or local Wrangler state.
