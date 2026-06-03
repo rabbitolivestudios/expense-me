@@ -14,6 +14,7 @@ import type { ScreenName } from "./features/shell/BottomNav";
 import "./styles/app.css";
 
 const storageKey = "expense-me-v1-live-state";
+const defaultFolderId = "report-current";
 
 interface PersistedAppState {
   expenses: Expense[];
@@ -28,13 +29,44 @@ function cloneReports(reports: Report[]) {
 
 function createDefaultReport(expenseIds: string[] = []): Report {
   return {
-    id: "report-current",
-    name: "Current Export Package",
-    dateRangeLabel: expenseIds.length > 0 ? "Ready for review" : "Add expenses to build the report",
+    id: defaultFolderId,
+    name: "Current Expense Folder",
+    dateRangeLabel: expenseIds.length > 0 ? "Ready for export package" : "Add expenses to this folder",
     expenseIds,
     status: "Draft",
     createdAt: new Date().toISOString()
   };
+}
+
+function reportForExpense(expense: Expense, reports: Report[]) {
+  return reports.find((report) => report.expenseIds.includes(expense.id));
+}
+
+function normalizeExpensesWithReports(expenses: Expense[], reports: Report[]) {
+  return expenses.map((expense) => {
+    if (expense.reportId && reports.some((report) => report.id === expense.reportId)) {
+      return expense;
+    }
+
+    const existingReport = reportForExpense(expense, reports);
+    if (existingReport) {
+      return { ...expense, reportId: existingReport.id };
+    }
+
+    return reports.length === 1 ? { ...expense, reportId: reports[0].id } : expense;
+  });
+}
+
+function syncReportsWithExpenses(reports: Report[], expenses: Expense[]) {
+  return reports.map((report) => {
+    const expenseIds = expenses.filter((expense) => expense.reportId === report.id).map((expense) => expense.id);
+
+    return {
+      ...report,
+      expenseIds,
+      dateRangeLabel: expenseIds.length > 0 ? report.dateRangeLabel : "Add expenses to this folder"
+    };
+  });
 }
 
 function loadPersistedState(): PersistedAppState | undefined {
@@ -104,12 +136,12 @@ function createExpenseFromEmailSummary(message: AgentMailMessageSummary): { expe
 
 export default function App() {
   const persistedState = loadPersistedState();
+  const initialReports = persistedState?.reports?.length ? cloneReports(persistedState.reports) : [createDefaultReport()];
+  const initialExpenses = normalizeExpensesWithReports(persistedState?.expenses ?? [], initialReports);
   const [screen, setScreen] = useState<ScreenName>("Inbox");
-  const [expenses, setExpenses] = useState<Expense[]>(() => persistedState?.expenses ?? []);
+  const [expenses, setExpenses] = useState<Expense[]>(() => initialExpenses);
   const [receiptArtifacts, setReceiptArtifacts] = useState<ReceiptArtifact[]>(() => persistedState?.receiptArtifacts ?? []);
-  const [reports, setReports] = useState<Report[]>(() =>
-    persistedState?.reports?.length ? cloneReports(persistedState.reports) : [createDefaultReport()]
-  );
+  const [reports, setReports] = useState<Report[]>(() => syncReportsWithExpenses(initialReports, initialExpenses));
   const [statementCharges, setStatementCharges] = useState<StatementCharge[]>(() => persistedState?.statementCharges ?? []);
   const [selectedExpenseId, setSelectedExpenseId] = useState<string | null>(null);
   const selectedExpense = expenses.find((expense) => expense.id === selectedExpenseId);
@@ -125,7 +157,60 @@ export default function App() {
 
   function saveExpense(updatedExpense: Expense) {
     setExpenses((current) => current.map((expense) => (expense.id === updatedExpense.id ? updatedExpense : expense)));
+    setReports((current) =>
+      current.map((report) => ({
+        ...report,
+        expenseIds:
+          report.id === updatedExpense.reportId
+            ? [updatedExpense.id, ...report.expenseIds.filter((id) => id !== updatedExpense.id)]
+            : report.expenseIds.filter((id) => id !== updatedExpense.id)
+      }))
+    );
     setSelectedExpenseId(null);
+  }
+
+  function assignExpenseFolder(expenseId: string, reportId: string) {
+    setExpenses((current) => current.map((expense) => (expense.id === expenseId ? { ...expense, reportId } : expense)));
+    setReports((current) =>
+      current.map((report) => ({
+        ...report,
+        expenseIds: report.id === reportId ? [expenseId, ...report.expenseIds.filter((id) => id !== expenseId)] : report.expenseIds.filter((id) => id !== expenseId)
+      }))
+    );
+  }
+
+  function createExpenseFolder(name: string) {
+    const trimmedName = name.trim();
+    if (!trimmedName) return;
+
+    const report: Report = {
+      id: `report-${safeId(trimmedName)}-${Date.now()}`,
+      name: trimmedName,
+      dateRangeLabel: "Add expenses to this folder",
+      expenseIds: [],
+      status: "Draft",
+      createdAt: new Date().toISOString()
+    };
+
+    setReports((current) => [report, ...current]);
+  }
+
+  function renameExpenseFolder(reportId: string, name: string) {
+    const trimmedName = name.trim();
+    if (!trimmedName) return;
+
+    setReports((current) => current.map((report) => (report.id === reportId ? { ...report, name: trimmedName } : report)));
+  }
+
+  function deleteExpenseFolder(reportId: string) {
+    setReports((current) => {
+      if (current.length <= 1) return current;
+
+      const target = current.find((report) => report.id === reportId);
+      if (!target || target.expenseIds.length > 0) return current;
+
+      return current.filter((report) => report.id !== reportId);
+    });
   }
 
   function deleteExpense(expenseId: string) {
@@ -166,7 +251,7 @@ export default function App() {
     setExpenses((current) => current.map((item) => (item.id === expense.id ? updatedExpense : item)));
   }
 
-  function addExpensesToCurrentReport(expenseIds: string[]) {
+  function addExpensesToCurrentReport(expenseIds: string[], reportId = reports[0]?.id ?? defaultFolderId) {
     if (expenseIds.length === 0) return;
 
     setReports((current) => {
@@ -175,10 +260,10 @@ export default function App() {
       }
 
       return current.map((report, index) =>
-        index === 0
+        report.id === reportId || (index === 0 && !current.some((item) => item.id === reportId))
           ? {
               ...report,
-              dateRangeLabel: "Ready for review",
+              dateRangeLabel: "Ready for export package",
               expenseIds: [...expenseIds.filter((id) => !report.expenseIds.includes(id)), ...report.expenseIds]
             }
           : report
@@ -187,15 +272,18 @@ export default function App() {
   }
 
   function addExpense(expense: Expense, artifacts: ReceiptArtifact[] = []) {
-    setExpenses((current) => [expense, ...current]);
+    const reportId = reports[0]?.id ?? defaultFolderId;
+    const assignedExpense = { ...expense, reportId };
+
+    setExpenses((current) => [assignedExpense, ...current]);
     if (artifacts.length > 0) {
       setReceiptArtifacts((current) => [
         ...artifacts,
         ...current.filter((artifact) => !artifacts.some((nextArtifact) => nextArtifact.id === artifact.id))
       ]);
     }
-    addExpensesToCurrentReport([expense.id]);
-    setSelectedExpenseId(expense.id);
+    addExpensesToCurrentReport([assignedExpense.id], reportId);
+    setSelectedExpenseId(assignedExpense.id);
     setScreen("Inbox");
   }
 
@@ -207,14 +295,15 @@ export default function App() {
       .filter((bundle) => !existingExpenseIds.has(bundle.expense.id));
 
     if (emailBundles.length > 0) {
-      const emailExpenses = emailBundles.map((bundle) => bundle.expense);
+      const reportId = reports[0]?.id ?? defaultFolderId;
+      const emailExpenses = emailBundles.map((bundle) => ({ ...bundle.expense, reportId }));
       const emailArtifacts = emailBundles.map((bundle) => bundle.artifact);
       setExpenses((current) => [...emailExpenses, ...current]);
       setReceiptArtifacts((current) => [
         ...emailArtifacts,
         ...current.filter((artifact) => !emailArtifacts.some((nextArtifact) => nextArtifact.id === artifact.id))
       ]);
-      addExpensesToCurrentReport(emailExpenses.map((expense) => expense.id));
+      addExpensesToCurrentReport(emailExpenses.map((expense) => expense.id), reportId);
     }
 
     return emailBundles.length;
@@ -222,12 +311,18 @@ export default function App() {
 
   function importStatementCharges(charges: StatementCharge[]) {
     const reconciled = reconcileStatementCharges(expenses, charges);
-    setExpenses(reconciled.expenses);
+    const reportId = reports[0]?.id ?? defaultFolderId;
+    const createdExpenseIds = new Set(reconciled.createdExpenseIds);
+    const nextExpenses = reconciled.expenses.map((expense) =>
+      createdExpenseIds.has(expense.id) && !expense.reportId ? { ...expense, reportId } : expense
+    );
+
+    setExpenses(nextExpenses);
     setStatementCharges((current) => [
       ...reconciled.charges,
       ...current.filter((charge) => !reconciled.charges.some((nextCharge) => nextCharge.id === charge.id))
     ]);
-    addExpensesToCurrentReport(reconciled.createdExpenseIds);
+    addExpensesToCurrentReport(reconciled.createdExpenseIds, reportId);
 
     return {
       importedCount: charges.length,
@@ -244,6 +339,7 @@ export default function App() {
           onBack={() => setSelectedExpenseId(null)}
           onCreateDeclaration={createDeclaration}
           onDelete={deleteExpense}
+          reports={reports}
           onSave={saveExpense}
         />
       )}
@@ -251,9 +347,11 @@ export default function App() {
         <InboxScreen
           expenses={expenses}
           onCapture={() => changeScreen("Capture")}
+          onAssignExpenseFolder={assignExpenseFolder}
           onOpenCards={() => changeScreen("Cards")}
           onOpenExpense={setSelectedExpenseId}
           onDeleteExpense={deleteExpense}
+          reports={reports}
           onSyncEmail={syncEmail}
         />
       )}
@@ -265,7 +363,15 @@ export default function App() {
           onSyncEmail={syncEmail}
         />
       )}
-      {!selectedExpense && screen === "Reports" && <ReportsScreen reports={reports} onBack={() => changeScreen("Inbox")} />}
+      {!selectedExpense && screen === "Reports" && (
+        <ReportsScreen
+          reports={reports}
+          onBack={() => changeScreen("Inbox")}
+          onCreateReport={createExpenseFolder}
+          onDeleteReport={deleteExpenseFolder}
+          onRenameReport={renameExpenseFolder}
+        />
+      )}
       {!selectedExpense && screen === "Cards" && (
         <CardsScreen
           statementCharges={statementCharges}

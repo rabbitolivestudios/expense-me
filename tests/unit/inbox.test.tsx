@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { seedExpenses } from "../fixtures";
+import { seedExpenses, seedReports } from "../fixtures";
 import { InboxScreen } from "../../src/features/inbox/InboxScreen";
 
 describe("InboxScreen", () => {
@@ -8,7 +8,9 @@ describe("InboxScreen", () => {
     render(
       <InboxScreen
         expenses={seedExpenses}
+        reports={seedReports}
         onCapture={() => undefined}
+        onAssignExpenseFolder={() => undefined}
         onDeleteExpense={() => undefined}
         onOpenCards={() => undefined}
         onOpenExpense={() => undefined}

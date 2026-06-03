@@ -8,7 +8,7 @@ import {
   isMealExpenseType,
   regionOptions
 } from "../../domain/options";
-import type { Expense, ExpenseType, PaymentMethod, Region } from "../../domain/types";
+import type { Expense, ExpenseType, PaymentMethod, Region, Report } from "../../domain/types";
 import "./expense.css";
 
 interface ExpenseDetailScreenProps {
@@ -16,11 +16,13 @@ interface ExpenseDetailScreenProps {
   onBack: () => void;
   onCreateDeclaration: (expense: Expense) => void;
   onDelete: (expenseId: string) => void;
+  reports: Report[];
   onSave: (expense: Expense) => void;
 }
 
 const paymentMethods: PaymentMethod[] = ["Credit Card", "Personal Card", "Cash", "Company Paid"];
 type DetailFieldKey =
+  | "reportId"
   | "subExpenseType"
   | "expenseDate"
   | "country"
@@ -45,6 +47,7 @@ function FieldLabel({ children, required = true }: { children: string; required?
 function getValidationErrors(expense: Expense): DetailFieldErrors {
   const errors: DetailFieldErrors = {};
 
+  if (!expense.reportId) errors.reportId = "Choose an Expense Folder.";
   if (!expense.subExpenseType) errors.subExpenseType = "Choose a sub expense type.";
   if (!expense.expenseDate) errors.expenseDate = "Choose an expense date.";
   if (!expense.country) errors.country = "Choose a country.";
@@ -64,7 +67,7 @@ function getValidationErrors(expense: Expense): DetailFieldErrors {
   return errors;
 }
 
-export function ExpenseDetailScreen({ expense, onBack, onCreateDeclaration, onDelete, onSave }: ExpenseDetailScreenProps) {
+export function ExpenseDetailScreen({ expense, onBack, onCreateDeclaration, onDelete, reports, onSave }: ExpenseDetailScreenProps) {
   const [draft, setDraft] = useState<Expense>(expense);
   const [showValidation, setShowValidation] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -135,6 +138,7 @@ export function ExpenseDetailScreen({ expense, onBack, onCreateDeclaration, onDe
   const countrySelectValue = countryOptions.includes(draft.country) ? draft.country : "";
   const validationErrors = getValidationErrors(draft);
   const visibleErrors = showValidation ? validationErrors : {};
+  const reportSelectValue = reports.some((report) => report.id === draft.reportId) ? draft.reportId ?? "" : "";
 
   function errorFor(field: DetailFieldKey) {
     return visibleErrors[field];
@@ -170,6 +174,26 @@ export function ExpenseDetailScreen({ expense, onBack, onCreateDeclaration, onDe
       </header>
 
       <div className="detail-grid">
+        <label className={fieldClass("reportId")}>
+          <FieldLabel>Expense Folder</FieldLabel>
+          <select
+            aria-label="Expense Folder"
+            value={reportSelectValue}
+            onChange={(event) => update("reportId", event.target.value)}
+            aria-invalid={Boolean(errorFor("reportId"))}
+            aria-describedby={describedBy("reportId")}
+          >
+            <option value="" disabled>
+              Select Expense Folder
+            </option>
+            {reports.map((report) => (
+              <option key={report.id} value={report.id}>
+                {report.name}
+              </option>
+            ))}
+          </select>
+          <FieldError field="reportId" />
+        </label>
         <label className="detail-field">
           <FieldLabel>Expense type</FieldLabel>
           <select

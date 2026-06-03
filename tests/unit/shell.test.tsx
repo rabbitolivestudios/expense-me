@@ -18,6 +18,18 @@ function seedAppState() {
   );
 }
 
+function seedFolderOnlyState() {
+  window.localStorage.setItem(
+    appStorageKey,
+    JSON.stringify({
+      expenses: [],
+      receiptArtifacts: [],
+      reports: [seedReports[0]],
+      statementCharges: []
+    })
+  );
+}
+
 describe("mobile app shell", () => {
   it("renders five bottom navigation actions with Capture centered", () => {
     render(<App />);
@@ -36,10 +48,51 @@ describe("mobile app shell", () => {
     render(<App />);
 
     await user.click(screen.getByRole("button", { name: "Reports" }));
-    expect(screen.getByRole("heading", { name: "Reports" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Expense Folders" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "Back to Inbox" }));
     expect(screen.getByRole("heading", { name: "Inbox" })).toBeInTheDocument();
+  });
+
+  it("creates a new Expense Folder from the folders screen", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "Reports" }));
+    await user.type(screen.getByLabelText("New Expense Folder"), "June customer visits");
+    await user.click(screen.getByRole("button", { name: "Create Expense Folder" }));
+
+    expect(screen.getByText("June customer visits")).toBeInTheDocument();
+  });
+
+  it("renames and deletes an empty Expense Folder", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "Reports" }));
+    await user.type(screen.getByLabelText("New Expense Folder"), "June customer visits");
+    await user.click(screen.getByRole("button", { name: "Create Expense Folder" }));
+    await user.click(screen.getByRole("button", { name: "Rename Expense Folder June customer visits" }));
+
+    const renameInput = screen.getByLabelText("Expense Folder name");
+    await user.clear(renameInput);
+    await user.type(renameInput, "June customer visits updated");
+    await user.click(screen.getByRole("button", { name: "Save Expense Folder name" }));
+
+    expect(screen.getByText("June customer visits updated")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Delete Expense Folder June customer visits updated" }));
+    expect(screen.queryByText("June customer visits updated")).not.toBeInTheDocument();
+  });
+
+  it("keeps Expense Folders with expenses from being deleted", async () => {
+    const user = userEvent.setup();
+    seedAppState();
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "Reports" }));
+
+    expect(screen.getByRole("button", { name: "Delete Expense Folder Chicago Training - May 2026" })).toBeDisabled();
   });
 
   it("opens card statement import from the Inbox quick action", async () => {
@@ -64,6 +117,57 @@ describe("mobile app shell", () => {
     await user.click(screen.getByRole("button", { name: "Save Expense" }));
 
     expect(screen.getByText("Detroit · Dinner")).toBeInTheDocument();
+  });
+
+  it("shows and saves the required Expense Folder in expense details", async () => {
+    const user = userEvent.setup();
+    seedAppState();
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: /Avec River North/i }));
+    const folderSelect = screen.getByLabelText("Expense Folder");
+    expect(folderSelect).toHaveValue("report-may-chicago");
+
+    await user.selectOptions(folderSelect, "report-customer-visit");
+    await user.click(screen.getByRole("button", { name: "Save Expense" }));
+    await user.click(screen.getByRole("button", { name: /Avec River North/i }));
+
+    expect(screen.getByLabelText("Expense Folder")).toHaveValue("report-customer-visit");
+  });
+
+  it("auto-assigns a manually created expense when one Expense Folder exists", async () => {
+    const user = userEvent.setup();
+    seedFolderOnlyState();
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "Capture receipt" }));
+    await user.click(screen.getByRole("button", { name: "Manual Expense" }));
+
+    expect(screen.getByRole("heading", { name: "Expense Detail" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Expense Folder")).toHaveValue("report-may-chicago");
+  });
+
+  it("reveals an Expense Folder assignment action with swipe right", async () => {
+    const user = userEvent.setup();
+    seedAppState();
+    render(<App />);
+
+    const expenseCard = screen.getByRole("button", { name: /Avec River North/i });
+
+    fireEvent.touchStart(expenseCard, { touches: [{ clientX: 120 }] });
+    fireEvent.touchMove(expenseCard, { touches: [{ clientX: 240 }] });
+    fireEvent.touchEnd(expenseCard, { changedTouches: [{ clientX: 240 }] });
+
+    const assignAction = screen.getByRole("button", { name: "Assign Expense Folder for Avec River North" });
+    expect(assignAction).toBeEnabled();
+
+    await user.click(assignAction);
+    const dialog = screen.getByRole("dialog", { name: "Assign Expense Folder" });
+    await user.selectOptions(within(dialog).getByLabelText("Expense Folder"), "report-customer-visit");
+    await user.click(within(dialog).getByRole("button", { name: "Assign Folder" }));
+
+    await user.click(screen.getByRole("button", { name: /Avec River North/i }));
+    expect(screen.getByLabelText("Expense Folder")).toHaveValue("report-customer-visit");
   });
 
   it("reveals a trash action with swipe left and deletes after confirmation", async () => {

@@ -27,6 +27,10 @@ export function buildReadinessChecklist(report: Report, expenses: Expense[]): Re
   const items: ReadinessItem[] = [];
 
   for (const expense of reportExpenses) {
+    if (expense.reportId !== report.id) {
+      items.push({ kind: "field", expenseId: expense.id, message: "Expense Folder is required." });
+    }
+
     for (const field of requiredFields) {
       if (!expense[field]) {
         items.push({ kind: "field", expenseId: expense.id, message: `${field} is required.` });
@@ -64,6 +68,7 @@ export interface ExportPackageBuildInput {
 export type ExportPackageFiles = Record<string, string>;
 
 const csvHeaders = [
+  "Expense folder",
   "Expense type",
   "Sub expense type",
   "Expense date",
@@ -123,9 +128,10 @@ function csvCell(value: string | number | undefined) {
   return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
-function buildEntryCsv(expenses: Expense[]) {
+function buildEntryCsv(report: Report, expenses: Expense[]) {
   const rows = expenses.map((expense) =>
     [
+      report.name,
       expense.expenseType,
       expense.subExpenseType,
       expense.expenseDate,
@@ -188,7 +194,7 @@ function buildReconciliationNotes(report: Report, expenses: Expense[]) {
 export function buildExportPackageFiles(input: ExportPackageBuildInput): ExportPackageFiles {
   const expenses = reportExpenses(input.report, input.expenses);
   const files: ExportPackageFiles = {
-    "entry-spreadsheet.csv": buildEntryCsv(expenses),
+    "entry-spreadsheet.csv": buildEntryCsv(input.report, expenses),
     "review-report.txt": buildReviewReport(input.report, expenses),
     "reconciliation-notes.txt": buildReconciliationNotes(input.report, expenses)
   };

@@ -324,6 +324,54 @@
   grid-template-columns: 42px minmax(0, 1fr) auto;
 }
 
+.folder-create {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 50px;
+  gap: 10px;
+  align-items: end;
+}
+
+.folder-create label {
+  display: grid;
+  gap: 6px;
+}
+
+.folder-create span {
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.folder-create input {
+  width: 100%;
+  min-height: 46px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  padding: 10px 12px;
+  font-weight: 750;
+}
+
+.folder-create button {
+  min-height: 46px;
+  border-radius: 8px;
+  background: var(--brand-sky-blue);
+  color: var(--brand-white);
+  display: grid;
+  place-items: center;
+}
+
+.folder-create button:disabled {
+  background: var(--border);
+  color: var(--text-muted);
+}
+
+.folder-create svg {
+  width: 21px;
+  height: 21px;
+}
+
 .report-panel > svg {
   width: 32px;
   height: 32px;
@@ -333,6 +381,61 @@
 .report-panel strong {
   color: var(--brand-purple);
   font-size: 0.82rem;
+}
+
+.report-actions {
+  display: grid;
+  justify-items: end;
+  gap: 8px;
+}
+
+.report-actions > div {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.report-actions button,
+.report-edit button {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  background: var(--surface-soft);
+  color: var(--brand-purple);
+  display: grid;
+  place-items: center;
+}
+
+.report-actions button:disabled,
+.report-edit button:disabled {
+  color: var(--text-muted);
+  background: var(--border);
+}
+
+.report-actions svg,
+.report-edit svg {
+  width: 17px;
+  height: 17px;
+}
+
+.report-edit {
+  display: grid;
+  gap: 8px;
+}
+
+.report-edit input {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  padding: 8px 10px;
+  font-weight: 800;
+}
+
+.report-edit > div {
+  display: inline-flex;
+  gap: 6px;
 }
 
 .export-checklist {

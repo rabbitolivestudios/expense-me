@@ -11,6 +11,17 @@ describe("Export Package readiness", () => {
     expect(checklist.some((item) => item.kind === "declaration")).toBe(true);
   });
 
+  it("flags expenses that are not assigned to an Expense Folder", () => {
+    const unassignedExpense = { ...seedExpenses[0], reportId: undefined };
+    const checklist = buildReadinessChecklist({ ...seedReports[0], expenseIds: [unassignedExpense.id] }, [unassignedExpense]);
+
+    expect(checklist).toContainEqual({
+      kind: "field",
+      expenseId: unassignedExpense.id,
+      message: "Expense Folder is required."
+    });
+  });
+
   it("builds handoff files with corporate fields and declaration text", () => {
     const expenses = seedExpenses.map((expense) =>
       expense.id === "exp-fuel-training" ? { ...expense, declarationId: "decl-exp-fuel-training", status: "Ready" as const } : expense

@@ -21,8 +21,12 @@
   transition: transform 160ms ease;
 }
 
-.swipe-row.is-revealed .action-card {
+.swipe-row.is-delete-revealed .action-card {
   transform: translateX(-78px);
+}
+
+.swipe-row.is-assign-revealed .action-card {
+  transform: translateX(78px);
 }
 
 .swipe-actions {
@@ -34,10 +38,19 @@
   justify-content: flex-end;
 }
 
-.swipe-delete {
+.swipe-assign-actions {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 78px;
+  display: flex;
+  align-items: stretch;
+  justify-content: flex-start;
+}
+
+.swipe-delete,
+.swipe-assign {
   width: 70px;
   border-radius: 8px;
-  background: var(--brand-hot-orange);
   color: var(--brand-white);
   display: grid;
   place-items: center;
@@ -48,12 +61,23 @@
     transform 160ms ease;
 }
 
-.swipe-row.is-revealed .swipe-delete {
+.swipe-delete {
+  background: var(--brand-hot-orange);
+}
+
+.swipe-assign {
+  background: var(--brand-sky-blue);
+  transform: translateX(-10px);
+}
+
+.swipe-row.is-delete-revealed .swipe-delete,
+.swipe-row.is-assign-revealed .swipe-assign {
   opacity: 1;
   transform: translateX(0);
 }
 
-.swipe-delete svg {
+.swipe-delete svg,
+.swipe-assign svg {
   width: 22px;
   height: 22px;
 }
@@ -98,6 +122,60 @@
   color: var(--brand-white);
 }
 
+.folder-assignment {
+  position: relative;
+  z-index: 2;
+  margin-top: 8px;
+  padding: 10px;
+  border: 1px solid rgba(0, 114, 206, 0.2);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+}
+
+.folder-assignment label {
+  display: grid;
+  gap: 6px;
+}
+
+.folder-assignment span {
+  color: var(--brand-sky-blue);
+  font-size: 0.78rem;
+  font-weight: 900;
+}
+
+.folder-assignment select {
+  min-height: 42px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  padding: 8px 10px;
+  font-weight: 800;
+}
+
+.folder-assignment div {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.folder-assignment button {
+  min-height: 42px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-soft);
+  color: var(--text);
+  font-weight: 850;
+}
+
+.folder-assignment .confirm-assign {
+  border-color: var(--brand-sky-blue);
+  background: var(--brand-sky-blue);
+  color: var(--brand-white);
+}
+
 .action-card .expense-main {
   display: block;
 }
@@ -118,6 +196,12 @@
 .action-card .expense-amount small {
   color: var(--text-muted);
   font-size: 0.78rem;
+}
+
+.action-card .expense-main .folder-line {
+  color: var(--brand-sky-blue);
+  font-weight: 850;
+  margin-top: 4px;
 }
 
 .section-head.compact {

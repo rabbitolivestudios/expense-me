@@ -41,6 +41,7 @@ export const seedExpenses: Expense[] = [
     mealPeopleCount: 4,
     attendeeNames: [],
     receiptArtifactIds: ["art-restaurant-receipt"],
+    reportId: "report-may-chicago",
     confidence: 0.74
   },
   {
@@ -61,6 +62,7 @@ export const seedExpenses: Expense[] = [
     fxRate: 1.0881,
     foreignTransactionFee: 1.1,
     receiptArtifactIds: ["art-taxi-paris"],
+    reportId: "report-customer-visit",
     confidence: 0.81
   },
   {
@@ -80,6 +82,7 @@ export const seedExpenses: Expense[] = [
     originalCurrency: "USD",
     finalUsdAmount: 12.82,
     receiptArtifactIds: [],
+    reportId: "report-may-chicago",
     confidence: 1
   }
 ];
@@ -122,5 +125,13 @@ export const seedReports: Report[] = [
     expenseIds: ["exp-meal-client-dinner", "exp-fuel-training"],
     status: "Draft",
     createdAt: "2026-06-02T12:00:00.000Z"
+  },
+  {
+    id: "report-customer-visit",
+    name: "Customer Visit - Paris",
+    dateRangeLabel: "May 21, 2026",
+    expenseIds: ["exp-taxi-paris"],
+    status: "Draft",
+    createdAt: "2026-06-02T13:00:00.000Z"
   }
 ];

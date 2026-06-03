@@ -1,12 +1,14 @@
-import { CreditCard, FileText, MailCheck, ReceiptText, RotateCw, Trash2 } from "lucide-react";
+import { CreditCard, FileText, FolderInput, MailCheck, ReceiptText, RotateCw, Trash2 } from "lucide-react";
 import { useRef, useState } from "react";
-import type { Expense } from "../../domain/types";
+import type { Expense, Report } from "../../domain/types";
 import "./inbox.css";
 
 interface InboxScreenProps {
   expenses: Expense[];
+  reports: Report[];
   onOpenExpense: (expenseId: string) => void;
   onDeleteExpense: (expenseId: string) => void;
+  onAssignExpenseFolder: (expenseId: string, reportId: string) => void;
   onCapture: () => void;
   onOpenCards: () => void;
   onSyncEmail: () => Promise<number>;
@@ -24,16 +26,34 @@ function detailForExpense(expense: Expense) {
   return [expense.city, expense.subExpenseType].filter(Boolean).join(" · ");
 }
 
+function folderNameForExpense(expense: Expense, reports: Report[]) {
+  return reports.find((report) => report.id === expense.reportId)?.name ?? "No Expense Folder";
+}
+
 interface SwipeState {
   expenseId: string;
   startX: number;
 }
 
-export function InboxScreen({ expenses, onOpenExpense, onDeleteExpense, onCapture, onOpenCards, onSyncEmail }: InboxScreenProps) {
+type RevealedAction = "assign" | "delete";
+
+export function InboxScreen({
+  expenses,
+  reports,
+  onOpenExpense,
+  onDeleteExpense,
+  onAssignExpenseFolder,
+  onCapture,
+  onOpenCards,
+  onSyncEmail
+}: InboxScreenProps) {
   const [syncStatus, setSyncStatus] = useState("");
   const [syncing, setSyncing] = useState(false);
   const [revealedExpenseId, setRevealedExpenseId] = useState<string | null>(null);
+  const [revealedAction, setRevealedAction] = useState<RevealedAction | null>(null);
   const [confirmingExpenseId, setConfirmingExpenseId] = useState<string | null>(null);
+  const [assigningExpenseId, setAssigningExpenseId] = useState<string | null>(null);
+  const [assignDraftReportId, setAssignDraftReportId] = useState("");
   const swipeState = useRef<SwipeState | null>(null);
   const suppressNextOpen = useRef<string | null>(null);
   const attention = expenses.filter((expense) => expense.status !== "Ready");
@@ -68,10 +88,17 @@ export function InboxScreen({ expenses, onOpenExpense, onDeleteExpense, onCaptur
     const deltaX = clientX - swipe.startX;
     if (deltaX < -48) {
       setRevealedExpenseId(expenseId);
+      setRevealedAction("delete");
       suppressNextOpen.current = expenseId;
-    } else if (deltaX > 28) {
+    } else if (deltaX > 48) {
+      setRevealedExpenseId(expenseId);
+      setRevealedAction("assign");
+      suppressNextOpen.current = expenseId;
+    } else if (deltaX > 28 || deltaX < -28) {
       setRevealedExpenseId(null);
+      setRevealedAction(null);
       setConfirmingExpenseId(null);
+      setAssigningExpenseId(null);
     }
   }
 
@@ -91,7 +118,9 @@ export function InboxScreen({ expenses, onOpenExpense, onDeleteExpense, onCaptur
 
     if (revealedExpenseId === expenseId) {
       setRevealedExpenseId(null);
+      setRevealedAction(null);
       setConfirmingExpenseId(null);
+      setAssigningExpenseId(null);
       return;
     }
 
@@ -101,23 +130,53 @@ export function InboxScreen({ expenses, onOpenExpense, onDeleteExpense, onCaptur
   function confirmDelete(expenseId: string) {
     onDeleteExpense(expenseId);
     setRevealedExpenseId(null);
+    setRevealedAction(null);
     setConfirmingExpenseId(null);
   }
 
+  function startAssign(expense: Expense) {
+    setAssigningExpenseId(expense.id);
+    setAssignDraftReportId(expense.reportId ?? reports[0]?.id ?? "");
+  }
+
+  function confirmAssign(expenseId: string) {
+    if (!assignDraftReportId) return;
+
+    onAssignExpenseFolder(expenseId, assignDraftReportId);
+    setAssigningExpenseId(null);
+    setRevealedExpenseId(null);
+    setRevealedAction(null);
+    suppressNextOpen.current = null;
+  }
+
   function renderExpense(expense: Expense) {
-    const isRevealed = revealedExpenseId === expense.id;
+    const isDeleteRevealed = revealedExpenseId === expense.id && revealedAction === "delete";
+    const isAssignRevealed = revealedExpenseId === expense.id && revealedAction === "assign";
     const isConfirming = confirmingExpenseId === expense.id;
+    const isAssigning = assigningExpenseId === expense.id;
     const title = titleForDelete(expense);
 
     return (
-      <div className={`swipe-row ${isRevealed ? "is-revealed" : ""}`} key={expense.id}>
-        <div className="swipe-actions" aria-hidden={!isRevealed}>
+      <div className={`swipe-row ${isDeleteRevealed ? "is-delete-revealed" : ""} ${isAssignRevealed ? "is-assign-revealed" : ""}`} key={expense.id}>
+        <div className="swipe-assign-actions" aria-hidden={!isAssignRevealed}>
+          <button
+            className="swipe-assign"
+            type="button"
+            aria-label={`Assign Expense Folder for ${title}`}
+            disabled={!isAssignRevealed}
+            tabIndex={isAssignRevealed ? 0 : -1}
+            onClick={() => startAssign(expense)}
+          >
+            <FolderInput aria-hidden="true" />
+          </button>
+        </div>
+        <div className="swipe-actions" aria-hidden={!isDeleteRevealed}>
           <button
             className="swipe-delete"
             type="button"
             aria-label={`Delete ${title}`}
-            disabled={!isRevealed}
-            tabIndex={isRevealed ? 0 : -1}
+            disabled={!isDeleteRevealed}
+            tabIndex={isDeleteRevealed ? 0 : -1}
             onClick={() => setConfirmingExpenseId(expense.id)}
           >
             <Trash2 aria-hidden="true" />
@@ -145,6 +204,7 @@ export function InboxScreen({ expenses, onOpenExpense, onDeleteExpense, onCaptur
             <span className={`status-pill ${statusClass(expense.status)}`}>{expense.status}</span>
             <strong>{titleForExpense(expense)}</strong>
             <small>{detailForExpense(expense)}</small>
+            <small className="folder-line">{folderNameForExpense(expense, reports)}</small>
           </span>
           <span className="expense-amount">
             <strong>
@@ -166,6 +226,32 @@ export function InboxScreen({ expenses, onOpenExpense, onDeleteExpense, onCaptur
               </button>
               <button className="confirm-delete" type="button" onClick={() => confirmDelete(expense.id)}>
                 Confirm Delete
+              </button>
+            </div>
+          </div>
+        )}
+        {isAssigning && (
+          <div className="folder-assignment" role="dialog" aria-label="Assign Expense Folder">
+            <label>
+              <span>Expense Folder</span>
+              <select
+                aria-label="Expense Folder"
+                value={assignDraftReportId}
+                onChange={(event) => setAssignDraftReportId(event.target.value)}
+              >
+                {reports.map((report) => (
+                  <option key={report.id} value={report.id}>
+                    {report.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div>
+              <button type="button" onClick={() => setAssigningExpenseId(null)}>
+                Cancel
+              </button>
+              <button className="confirm-assign" type="button" disabled={!assignDraftReportId} onClick={() => confirmAssign(expense.id)}>
+                Assign Folder
               </button>
             </div>
           </div>
