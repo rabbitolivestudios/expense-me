@@ -210,6 +210,12 @@ function installCloudApiMock(options: { syncEmail?: (reportId?: string) => Cloud
       });
     }
 
+    if (url === "/api/export-packages/export-package-test/download" && method === "GET") {
+      return Promise.resolve(new Response(new Uint8Array([80, 75, 3, 4]), {
+        headers: { "Content-Type": "application/zip" }
+      }));
+    }
+
     return jsonResponse({ error: `Unhandled test route ${method} ${url}` }, 404);
   }));
 }
@@ -227,6 +233,31 @@ function seedFolderOnlyState() {
       expenses: [],
       receiptArtifacts: [],
       reports: [seedReports[0]],
+      statementCharges: []
+    })
+  );
+}
+
+function seedReadyExportState() {
+  window.localStorage.setItem(
+    appStorageKey,
+    JSON.stringify({
+      expenses: [
+        {
+          ...seedExpenses[0],
+          status: "Ready",
+          reportId: "report-export-ready"
+        }
+      ],
+      receiptArtifacts: [seedArtifacts[0]],
+      reports: [
+        {
+          ...seedReports[0],
+          id: "report-export-ready",
+          name: "June Customer Visit",
+          expenseIds: [seedExpenses[0].id]
+        }
+      ],
       statementCharges: []
     })
   );
@@ -850,5 +881,35 @@ describe("mobile app shell", () => {
 
     expect(screen.getByRole("heading", { name: "Customer Visit - Paris" })).toBeInTheDocument();
     expect(screen.getByText("May 21, 2026")).toBeInTheDocument();
+  });
+
+  it("downloads cloud Export Packages as zip bytes with the Expense Folder name", async () => {
+    const user = userEvent.setup();
+    const createObjectURL = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:export-package");
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const click = vi.fn();
+    const originalCreateElement = document.createElement.bind(document);
+    vi.spyOn(document, "createElement").mockImplementation(((tagName: string, options?: ElementCreationOptions) => {
+      const element = originalCreateElement(tagName, options);
+      if (tagName.toLowerCase() === "a") {
+        Object.defineProperty(element, "click", { value: click });
+      }
+      return element;
+    }) as typeof document.createElement);
+    seedReadyExportState();
+    await renderLoadedApp();
+
+    await user.click(screen.getByRole("button", { name: "Export" }));
+    await user.click(screen.getByRole("button", { name: "Generate Export Package" }));
+
+    await waitFor(() => expect(click).toHaveBeenCalled());
+    const fetchMock = vi.mocked(fetch);
+    expect(fetchMock).toHaveBeenCalledWith("/api/export-packages/export-package-test/download");
+    expect(createObjectURL).toHaveBeenCalledWith(expect.objectContaining({ type: "application/zip" }));
+
+    const link = click.mock.instances[0] as HTMLAnchorElement;
+    expect(link.download).toBe("Expense-Me-June-Customer-Visit.zip");
+    expect(link.href).toBe("blob:export-package");
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:export-package");
   });
 });

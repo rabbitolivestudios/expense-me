@@ -85,6 +85,7 @@ V1 remains live on Vercel at `expense-me-tbo.vercel.app` as the fallback product
 - 2026-06-03 mobile hotfix: the browser client calls `globalThis.fetch` through a wrapper for the default CloudRepository fetcher. This prevents iOS Safari/Chrome from invoking `fetch` with the repository instance as `this`, which surfaced as `Can only call Window.fetch on instances of Window` and also caused Inbox email sync to fail from the phone.
 - If a phone still shows that old fetch error after deployment, close/reopen the tab or hard-refresh the PWA so the service worker picks up the current bundle.
 - iOS Home Screen icons use the root `apple-touch-icon*.png` files and public Pages-hosted `apple-touch-icon` links. Keep those icon links off the Access-protected `expense.mac-tbo.com` host so iOS can fetch the icon while creating the Home Screen web clip.
+- Cloud Export Package downloads fetch the zip bytes and save a Blob named after the selected Expense Folder. The PWA service worker must denylist `/api/*` navigations so API download routes cannot be served as cached app-shell HTML.
 
 Required Wrangler setup commands:
 

@@ -96,6 +96,15 @@ function downloadFilename(value: string) {
   return `${value.replace(/[<>:"/\\|?*\x00-\x1F]+/g, "-").replace(/^-|-$/g, "") || "Export Package"}.zip`;
 }
 
+function exportPackageDownloadFilename(exportPackage: ExportPackage) {
+  const folderName =
+    exportPackage.spreadsheetName.match(/^(.*)-entry-spreadsheet\.csv$/i)?.[1] ||
+    exportPackage.receiptsZipName.match(/^(.*)-receipts\.zip$/i)?.[1] ||
+    exportPackage.id;
+
+  return downloadFilename(folderName);
+}
+
 export async function handleApiRequest(request: Request, env: CloudflareEnv, deps: RouteDeps = {}) {
   try {
     const url = new URL(request.url);
@@ -252,7 +261,7 @@ export async function handleApiRequest(request: Request, env: CloudflareEnv, dep
       );
       const headers = new Headers();
       headers.set("Content-Type", object.httpMetadata?.contentType ?? "application/zip");
-      headers.set("Content-Disposition", `attachment; filename="${downloadFilename(exportPackage.id)}"`);
+      headers.set("Content-Disposition", `attachment; filename="${exportPackageDownloadFilename(exportPackage)}"`);
       return new Response(await object.arrayBuffer(), { headers });
     }
 

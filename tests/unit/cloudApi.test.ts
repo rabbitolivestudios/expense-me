@@ -47,8 +47,8 @@ function repositoryStub() {
         id: "export-package-1",
         reportId: "report-1",
         generatedAt: "2026-06-03T18:00:00.000Z",
-        reviewPdfName: "review.txt",
-        spreadsheetName: "entry.csv",
+        reviewPdfName: "Chicago Training - May 2026-expense-index.pdf",
+        spreadsheetName: "Chicago Training - May 2026-entry-spreadsheet.csv",
         receiptsZipName: "receipts.zip",
         declarationPdfNames: [],
         reconciliationNotesName: "reconciliation.txt"
@@ -60,8 +60,8 @@ function repositoryStub() {
         id: "export-package-1",
         reportId: "report-1",
         generatedAt: "2026-06-03T18:00:00.000Z",
-        reviewPdfName: "review.txt",
-        spreadsheetName: "entry.csv",
+        reviewPdfName: "Chicago Training - May 2026-expense-index.pdf",
+        spreadsheetName: "Chicago Training - May 2026-entry-spreadsheet.csv",
         receiptsZipName: "receipts.zip",
         declarationPdfNames: [],
         reconciliationNotesName: "reconciliation.txt"
@@ -305,6 +305,22 @@ describe("cloud API router", () => {
       employeeName: "Thiago Oliveira",
       reportReference: "EXP-1"
     });
+  });
+
+  it("downloads Export Package zip bytes with an Expense Folder filename", async () => {
+    const repository = repositoryStub();
+
+    const response = await handleApiRequest(
+      localRequest("/api/export-packages/export-package-1/download"),
+      env,
+      { repository: repository as never }
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Content-Type")).toBe("application/zip");
+    expect(response.headers.get("Content-Disposition")).toBe('attachment; filename="Chicago Training - May 2026.zip"');
+    await expect(response.arrayBuffer()).resolves.toEqual(new Uint8Array([80, 75]).buffer);
+    expect(repository.getExportPackageDownload).toHaveBeenCalledWith(context, "export-package-1");
   });
 
   it("syncs AgentMail server-side and writes imported email expenses", async () => {

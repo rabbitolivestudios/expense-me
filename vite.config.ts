@@ -7,7 +7,10 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: "autoUpdate",
-      manifest: false
+      manifest: false,
+      workbox: {
+        navigateFallbackDenylist: [/^\/api\//]
+      }
     })
   ],
   server: {

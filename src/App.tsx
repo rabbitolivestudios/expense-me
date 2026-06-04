@@ -56,6 +56,10 @@ function writeActiveReportPreference(reportId: string) {
   }
 }
 
+function safeDownloadName(value: string) {
+  return value.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "") || "Expense-Folder";
+}
+
 export default function App() {
   const cloudState = useExpenseMeCloudState();
   const [screen, setScreen] = useState<ScreenName>("Inbox");
@@ -300,10 +304,28 @@ export default function App() {
 
   async function generateCloudExportPackage(reportId: string) {
     const result = await cloudState.createExportPackage(reportId);
+    const reportName =
+      reportsRef.current.find((report) => report.id === result.exportPackage.reportId)?.name ??
+      reportsRef.current.find((report) => report.id === reportId)?.name ??
+      result.exportPackage.id;
+    const response = await globalThis.fetch(result.downloadUrl);
+    if (!response.ok) {
+      throw new Error(`Export Package download failed: ${response.status}`);
+    }
+
+    const contentType = response.headers.get("Content-Type") ?? "application/zip";
+    if (contentType.includes("text/html")) {
+      throw new Error("Export Package download returned HTML instead of a zip file.");
+    }
+
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob.type ? blob : new Blob([blob], { type: "application/zip" }));
     const link = document.createElement("a");
-    link.href = result.downloadUrl;
-    link.download = `Expense-Me-${result.exportPackage.id}.zip`;
+
+    link.href = url;
+    link.download = `Expense-Me-${safeDownloadName(reportName)}.zip`;
     link.click();
+    URL.revokeObjectURL(url);
   }
 
   return (
