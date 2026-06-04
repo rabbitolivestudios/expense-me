@@ -167,6 +167,28 @@ describe("reconciliation", () => {
     expect(expense.statementChargeMatchId).toBe("charge-hotel");
   });
 
+  it("prefills location fields from unmatched statement charges", () => {
+    const charge: StatementCharge = {
+      id: "charge-fuel",
+      statementImportId: "statement-1",
+      cardLabel: "BofA GlobalCard",
+      transactionDate: "2026-05-19",
+      description: "EXXON BUCKY'S STORE 53",
+      originalAmount: 73.63,
+      originalCurrency: "USD",
+      finalUsdAmount: 73.63,
+      merchantCity: "NAPERVILLE",
+      merchantCountry: "United States",
+      matchStatus: "Unmatched"
+    };
+
+    const expense = createExpenseFromStatementCharge(charge);
+
+    expect(expense.region).toBe("NAFTA");
+    expect(expense.country).toBe("United States");
+    expect(expense.city).toBe("NAPERVILLE");
+  });
+
   it.each([
     ["AMTRAK RAIL", "Transport", "Rail"],
     ["AIRPORT TOLL ROAD", "Transport", "Toll"],

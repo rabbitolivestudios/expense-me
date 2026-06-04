@@ -54,6 +54,8 @@ Comfort
     `);
 
     expect(result.description).toBe("Uber: 135 W Madison St, Chicago, IL 60602, US -> 105 E 4th Ave, Naperville, IL 60540, US");
+    expect(result.city).toBe("Chicago");
+    expect(result.country).toBe("United States");
   });
 
   it("does not use email from and to headers as an Uber route", () => {
@@ -175,6 +177,8 @@ UberX
 
     expect(bundle.expense.merchant).toBe("Uber");
     expect(bundle.expense.description).toBe("Uber: 350 5th Ave, New York, NY 10118, US -> 11 Wall St, New York, NY 10005, US");
+    expect(bundle.expense.city).toBe("New York");
+    expect(bundle.expense.country).toBe("United States");
   });
 
   it("repairs old summary-only email expenses while preserving folder and matching links", () => {

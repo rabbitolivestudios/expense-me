@@ -12,6 +12,7 @@ import {
   staySubExpenseOptions,
   transportSubExpenseOptions
 } from "../../src/domain/options";
+import { inferLocationFromStatementFields } from "../../src/domain/location";
 import { expenseSchema } from "../../src/domain/validators";
 
 describe("Expense domain", () => {
@@ -120,5 +121,13 @@ describe("Expense domain", () => {
     );
     expect(getCountryOptions("Other")).toEqual(["Other"]);
     expect(regionOptions.every((region) => countryOptionsByRegion[region].length > 0)).toBe(true);
+  });
+
+  it("does not treat merchant phone numbers as statement cities", () => {
+    expect(inferLocationFromStatementFields({ city: "8005928996", stateOrProvince: "CA", currency: "USD" })).toEqual({
+      city: undefined,
+      country: "United States",
+      region: "NAFTA"
+    });
   });
 });

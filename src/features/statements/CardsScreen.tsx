@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { ArrowLeft, CheckCircle2, Upload } from "lucide-react";
 import type { StatementCharge } from "../../domain/types";
-import { parseStatementCsv } from "./statementImport";
+import { parseStatementFile } from "./statementImport";
 
 interface StatementImportSummary {
   importedCount: number;
@@ -28,19 +28,6 @@ function importId() {
   return `statement-${Date.now()}`;
 }
 
-function readFileText(file: File) {
-  if (typeof file.text === "function") {
-    return file.text();
-  }
-
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.addEventListener("load", () => resolve(String(reader.result ?? "")));
-    reader.addEventListener("error", () => reject(new Error("Statement CSV import failed. Check the file and try again.")));
-    reader.readAsText(file);
-  });
-}
-
 export function CardsScreen({
   cardLabel = "Corporate Visa",
   statementCharges = [],
@@ -56,8 +43,7 @@ export function CardsScreen({
     if (!file) return;
 
     try {
-      const csv = await readFileText(file);
-      const parsedCharges = parseStatementCsv(csv, importId(), cardLabel);
+      const parsedCharges = await parseStatementFile(file, importId(), cardLabel);
       const summary = onStatementImported?.(parsedCharges);
 
       if (summary) {
@@ -68,7 +54,7 @@ export function CardsScreen({
         setStatusMessage(`${parsedCharges.length} charges imported.`);
       }
     } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : "Statement CSV import failed. Check the file and try again.");
+      setStatusMessage(error instanceof Error ? error.message : "Statement import failed. Check the file and try again.");
     } finally {
       if (input) input.value = "";
     }
@@ -87,8 +73,8 @@ export function CardsScreen({
         <label className="icon-button" aria-label="Upload statement">
           <Upload aria-hidden="true" />
           <input
-            accept=".csv,text/csv"
-            aria-label="Statement CSV file"
+            accept=".csv,text/csv,.qbo,.ofx,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            aria-label="Statement file"
             className="visually-hidden"
             type="file"
             onChange={(event) => void handleStatementUpload(event.currentTarget.files?.[0], event.currentTarget)}
@@ -129,7 +115,7 @@ export function CardsScreen({
               Ready
             </span>
             <h3>No unmatched card charges</h3>
-            <p>{charges.length === 0 ? "Upload a CSV statement to find missed charges." : "Statement imports are reconciled."}</p>
+            <p>{charges.length === 0 ? "Upload a CSV, QBO, OFX, or XLSX statement to find missed charges." : "Statement imports are reconciled."}</p>
           </div>
         </article>
       )}

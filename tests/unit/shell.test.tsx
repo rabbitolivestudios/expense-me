@@ -912,4 +912,38 @@ describe("mobile app shell", () => {
     expect(link.href).toBe("blob:export-package");
     expect(revokeObjectURL).toHaveBeenCalledWith("blob:export-package");
   });
+
+  it("shares cloud Export Packages as zip files when the browser supports file sharing", async () => {
+    const user = userEvent.setup();
+    const share = vi.fn().mockResolvedValue(undefined);
+    const canShare = vi.fn().mockReturnValue(true);
+    const createObjectURL = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:export-package");
+    const click = vi.fn();
+    const originalCreateElement = document.createElement.bind(document);
+    vi.spyOn(document, "createElement").mockImplementation(((tagName: string, options?: ElementCreationOptions) => {
+      const element = originalCreateElement(tagName, options);
+      if (tagName.toLowerCase() === "a") {
+        Object.defineProperty(element, "click", { value: click });
+      }
+      return element;
+    }) as typeof document.createElement);
+    Object.defineProperty(navigator, "share", { value: share, configurable: true });
+    Object.defineProperty(navigator, "canShare", { value: canShare, configurable: true });
+    seedReadyExportState();
+    await renderLoadedApp();
+
+    await user.click(screen.getByRole("button", { name: "Export" }));
+    await user.click(screen.getByRole("button", { name: "Generate Export Package" }));
+
+    await waitFor(() => expect(share).toHaveBeenCalled());
+    expect(canShare).toHaveBeenCalledWith({
+      files: [expect.objectContaining({ name: "Expense-Me-June-Customer-Visit.zip", type: "application/zip" })]
+    });
+    expect(share).toHaveBeenCalledWith({
+      files: [expect.objectContaining({ name: "Expense-Me-June-Customer-Visit.zip", type: "application/zip" })],
+      title: "Expense-Me-June-Customer-Visit.zip"
+    });
+    expect(click).not.toHaveBeenCalled();
+    expect(createObjectURL).not.toHaveBeenCalled();
+  });
 });

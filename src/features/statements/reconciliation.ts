@@ -1,4 +1,5 @@
 import type { Expense, StatementCharge } from "../../domain/types";
+import { regionForCountry } from "../../domain/location";
 import { classifyExpenseText } from "../extraction/categorizeExpense";
 
 const strongMatchThreshold = 75;
@@ -33,9 +34,14 @@ export function scoreMatch(expense: Expense, charge: StatementCharge) {
 }
 
 export function applyStatementMatch(expense: Expense, charge: StatementCharge): Expense {
+  const statementRegion = charge.merchantRegion ?? regionForCountry(charge.merchantCountry);
+
   return {
     ...expense,
     statementChargeMatchId: charge.id,
+    region: statementRegion ?? expense.region,
+    country: charge.merchantCountry ?? expense.country,
+    city: charge.merchantCity ?? expense.city,
     finalUsdAmount: charge.finalUsdAmount,
     fxRate: charge.fxRate,
     foreignTransactionFee: charge.foreignTransactionFee,
@@ -49,6 +55,7 @@ function statementExpenseId(charge: StatementCharge) {
 
 export function createExpenseFromStatementCharge(charge: StatementCharge): Expense {
   const classification = classifyExpenseText(charge.description);
+  const country = charge.merchantCountry ?? "United States";
 
   return {
     id: statementExpenseId(charge),
@@ -56,9 +63,9 @@ export function createExpenseFromStatementCharge(charge: StatementCharge): Expen
     status: "Declare",
     ...classification,
     expenseDate: charge.transactionDate,
-    region: "NAFTA",
-    country: "United States",
-    city: "",
+    region: charge.merchantRegion ?? regionForCountry(country) ?? "NAFTA",
+    country,
+    city: charge.merchantCity ?? "",
     merchant: charge.description,
     description: `Statement charge: ${charge.description}`,
     paymentMethod: "Credit Card",

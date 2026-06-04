@@ -3,6 +3,7 @@ import { useState } from "react";
 import { expenseFolderDateRangeLabel } from "../../domain/reportDates";
 import type { Expense, ReceiptArtifact, Report } from "../../domain/types";
 import { buildExportPackageZip, buildReadinessChecklist } from "./exportPackage";
+import { shareOrDownloadZip } from "./shareExportPackage";
 import "./export.css";
 
 interface ExportScreenProps {
@@ -55,13 +56,7 @@ export function ExportScreen({ reports, expenses, receiptArtifacts, onBack, onGe
       reportReference: report.id
     });
     const blob = new Blob([archive as BlobPart], { type: "application/zip" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-
-    link.href = url;
-    link.download = `Expense-Me-${report.name.replace(/[^a-z0-9]+/gi, "-")}.zip`;
-    link.click();
-    URL.revokeObjectURL(url);
+    await shareOrDownloadZip(blob, `Expense-Me-${report.name.replace(/[^a-z0-9]+/gi, "-")}.zip`);
     setStatusMessage("Export Package downloaded.");
   }
 

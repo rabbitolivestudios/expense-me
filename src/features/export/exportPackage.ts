@@ -155,14 +155,20 @@ function filenameBase(value: string) {
   return safeFilename(value).replace(/\.[^.]+$/, "") || "receipt";
 }
 
-function artifactPdfFilename(artifact: ReceiptArtifact) {
+function compactFilenameBase(value: string, maxCharacters: number) {
+  const safe = filenameBase(value);
+  if (safe.length <= maxCharacters) return safe;
+  return safe.slice(0, maxCharacters).replace(/-+$/g, "") || "receipt";
+}
+
+function artifactPdfFilename(artifact: ReceiptArtifact, index: number) {
   const base = artifact.originalFilename
-    ? filenameBase(artifact.originalFilename)
+    ? compactFilenameBase(artifact.originalFilename, 39)
     : artifact.artifactType === "EmailBody"
       ? "email-receipt"
-      : filenameBase(artifact.id);
+      : compactFilenameBase(artifact.id, 39);
 
-  return `${safeFilename(artifact.id)}-${base}.pdf`;
+  return `receipt-${String(index + 1).padStart(3, "0")}-${base}.pdf`;
 }
 
 function dataUrlToBytes(dataUrl: string) {
@@ -436,6 +442,10 @@ async function buildArtifactPdf(artifact: ReceiptArtifact) {
   );
 }
 
+function addZipFile(zip: JSZip, path: string, contents: string | Uint8Array) {
+  zip.file(path, contents, { createFolders: false });
+}
+
 export async function buildExportPackageZip(input: ExportPackageBuildInput) {
   const missingExpenses = missingExpenseIds(input.report, input.expenses);
   if (missingExpenses.length > 0) {
@@ -454,15 +464,16 @@ export async function buildExportPackageZip(input: ExportPackageBuildInput) {
   }
 
   if (files["entry-spreadsheet.csv"]) {
-    zip.file("entry-spreadsheet.csv", files["entry-spreadsheet.csv"]);
+    addZipFile(zip, "entry-spreadsheet.csv", files["entry-spreadsheet.csv"]);
   }
 
   if (files["expense-index.source.txt"]) {
-    zip.file("expense-index.pdf", await buildTextPdf("Export Package Expense Index", files["expense-index.source.txt"]));
+    addZipFile(zip, "expense-index.pdf", await buildTextPdf("Export Package Expense Index", files["expense-index.source.txt"]));
   }
 
   if (files["reconciliation-notes.source.txt"]) {
-    zip.file(
+    addZipFile(
+      zip,
       "reconciliation-notes.pdf",
       await buildTextPdf("Export Package Reconciliation Notes", files["reconciliation-notes.source.txt"])
     );
@@ -471,27 +482,18 @@ export async function buildExportPackageZip(input: ExportPackageBuildInput) {
   for (const [path, contents] of Object.entries(files)) {
     const declarationMatch = path.match(/^declarations\/(.+)\.source\.txt$/);
     if (declarationMatch) {
-      zip.file(`declarations/${declarationMatch[1]}.pdf`, await buildTextPdf("Missing Receipt Declaration", contents));
+      addZipFile(zip, `declarations/${declarationMatch[1]}.pdf`, await buildTextPdf("Missing Receipt Declaration", contents));
     }
   }
 
   if (receiptArtifacts.length > 0) {
-    const usedPaths = new Set<string>();
-
-    for (const artifact of receiptArtifacts) {
-      const basePath = `receipts/${artifactPdfFilename(artifact)}`;
-      let path = basePath;
-      let copy = 2;
-      while (usedPaths.has(path)) {
-        path = basePath.replace(/(\.[^.]+)?$/, `-${copy}$1`);
-        copy += 1;
-      }
-      usedPaths.add(path);
-      zip.file(path, await buildArtifactPdf(artifact));
+    for (const [index, artifact] of receiptArtifacts.entries()) {
+      addZipFile(zip, `receipts/${artifactPdfFilename(artifact, index)}`, await buildArtifactPdf(artifact));
     }
   }
 
-  zip.file(
+  addZipFile(
+    zip,
     "receipts/README.pdf",
     await buildTextPdf(
       "Receipts Folder",
@@ -501,5 +503,10 @@ export async function buildExportPackageZip(input: ExportPackageBuildInput) {
     )
   );
 
-  return zip.generateAsync({ type: "uint8array" });
+  return zip.generateAsync({
+    type: "uint8array",
+    compression: "DEFLATE",
+    compressionOptions: { level: 6 },
+    platform: "UNIX"
+  });
 }

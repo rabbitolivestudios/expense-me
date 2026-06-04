@@ -1,6 +1,12 @@
+import { inferLocationFromAddress } from "../../domain/location";
+import type { Region } from "../../domain/types";
+
 export interface ParsedReceipt {
   merchant?: string;
   description?: string;
+  region?: Region;
+  country?: string;
+  city?: string;
   expenseDate?: string;
   originalAmount?: number;
   originalCurrency?: string;
@@ -189,7 +195,7 @@ function routePlaceFromLabel(lines: string[], label: RegExp) {
   return undefined;
 }
 
-function parseUberRouteDescription(text: string, lines: string[]) {
+function parseUberRoute(text: string, lines: string[]) {
   if (!/\bUber\b/i.test(text)) return undefined;
 
   const tripDetailsIndex = findTripDetailsIndex(lines);
@@ -201,7 +207,7 @@ function parseUberRouteDescription(text: string, lines: string[]) {
     (tripDetailsIndex >= 0 ? routePlaceFromLabel(routeLines, /^to\s*:?\s*(.+)$/i) : undefined) ??
     routePlaceAfterMarker(routeLines, /dropoff|drop.?off|destination/i);
 
-  return pickup && dropoff ? `Uber: ${pickup} -> ${dropoff}` : undefined;
+  return pickup && dropoff ? { pickup, dropoff, description: `Uber: ${pickup} -> ${dropoff}` } : undefined;
 }
 
 function parseMerchant(text: string, lines: string[]) {
@@ -229,11 +235,15 @@ export function parseReceiptText(text: string): ParsedReceipt {
   const date = parseDate(text);
   const amount = parseAmount(text);
   const currency = parseCurrency(text);
-  const description = parseUberRouteDescription(text, lines);
+  const route = parseUberRoute(text, lines);
+  const location = inferLocationFromAddress(route?.pickup ?? route?.dropoff);
 
   return {
     merchant: parseMerchant(text, lines),
-    description,
+    description: route?.description,
+    region: location.region,
+    country: location.country,
+    city: location.city,
     expenseDate: date,
     originalAmount: amount,
     originalCurrency: currency,

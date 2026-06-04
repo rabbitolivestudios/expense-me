@@ -14,6 +14,7 @@ import type { Expense, ReceiptArtifact, Report, StatementCharge } from "./domain
 import { CaptureSheet } from "./features/capture/CaptureSheet";
 import { ExpenseDetailScreen } from "./features/expense/ExpenseDetailScreen";
 import { ExportScreen } from "./features/export/ExportScreen";
+import { shareOrDownloadZip } from "./features/export/shareExportPackage";
 import { InboxScreen } from "./features/inbox/InboxScreen";
 import { ReportsScreen } from "./features/reports/ReportsScreen";
 import { CardsScreen } from "./features/statements/CardsScreen";
@@ -319,13 +320,7 @@ export default function App() {
     }
 
     const blob = await response.blob();
-    const url = URL.createObjectURL(blob.type ? blob : new Blob([blob], { type: "application/zip" }));
-    const link = document.createElement("a");
-
-    link.href = url;
-    link.download = `Expense-Me-${safeDownloadName(reportName)}.zip`;
-    link.click();
-    URL.revokeObjectURL(url);
+    await shareOrDownloadZip(blob, `Expense-Me-${safeDownloadName(reportName)}.zip`);
   }
 
   return (

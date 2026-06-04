@@ -27,7 +27,7 @@ The current app has the first V1 implementation of expenses, card reconciliation
 - V1.5 AgentMail webhook intake for automatic received-message sync after Cloudflare deployment
 - Company-style expense type, sub-expense type, region, and country fields
 - Meal attendee count support
-- Card statement import and matching
+- Card statement import and matching for CSV, QBO/OFX, and XLSX exports, including statement-provided merchant city/country when available
 - Swipe-left and detail-screen expense deletion with confirmation
 - Export package generation with the entry spreadsheet plus PDF receipt copies, PDF declarations, PDF reconciliation notes, and a PDF expense index
 
@@ -86,6 +86,8 @@ V1 remains live on Vercel at `expense-me-tbo.vercel.app` as the fallback product
 - If a phone still shows that old fetch error after deployment, close/reopen the tab or hard-refresh the PWA so the service worker picks up the current bundle.
 - iOS Home Screen icons use the root `apple-touch-icon*.png` files and public Pages-hosted `apple-touch-icon` links. Keep those icon links off the Access-protected `expense.mac-tbo.com` host so iOS can fetch the icon while creating the Home Screen web clip.
 - Cloud Export Package downloads fetch the zip bytes and save a Blob named after the selected Expense Folder. The PWA service worker must denylist `/api/*` navigations so API download routes cannot be served as cached app-shell HTML.
+- iPhone export should use the browser file-share sheet when available so the generated zip can be sent to Mail or saved elsewhere. Download remains the fallback for browsers without file sharing.
+- Export Package zip entries use short receipt filenames and omit standalone folder entries for better iOS extraction compatibility.
 
 Required Wrangler setup commands:
 

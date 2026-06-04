@@ -27,6 +27,10 @@ export interface StatementCharge {
   transactionDate: string;
   postedDate?: string;
   description: string;
+  merchantCity?: string;
+  merchantState?: string;
+  merchantCountry?: string;
+  merchantRegion?: Region;
   originalAmount: number;
   originalCurrency: string;
   finalUsdAmount: number;

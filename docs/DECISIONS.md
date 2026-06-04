@@ -18,7 +18,7 @@ V1 should:
 
 - capture receipts by camera/image/PDF/manual entry;
 - sync receipts from `expense-me@agentmail.to`;
-- reconcile card statements to find missed charges;
+- reconcile card statements to find missed charges, including CSV, QBO/OFX, and XLSX statement exports;
 - mirror company-required fields and dropdowns;
 - require missing-receipt declarations when evidence is absent;
 - generate an Export Package with transaction details and PDF receipt/declaration evidence.
@@ -44,6 +44,8 @@ The Inbox keeps the current visible expense order and inserts compact week/year 
 Current intake uses browser-local text extraction plus deterministic parsing and keyword categorization. Camera/image uploads run OCR in the browser with Tesseract.js. PDFs use embedded PDF text first and fall back to OCR for scanned pages.
 
 AgentMail intake must parse full message detail (`text`, `html`, `extracted_text`, or `extracted_html`) rather than list summaries. Summary-only imports are allowed to be repaired only when the new parse is at least as confident and has concrete receipt fields, so a low-confidence reparse cannot overwrite existing financial data. Uber receipt imports should keep merchant as `Uber` and, when the receipt includes pickup/dropoff places in the trip details block, use those places in the expense description.
+
+When a receipt or card statement exposes a usable city/country, the app should prefill the editable Expense location fields. BofA statement exports sometimes put phone numbers in the merchant city column; those must not be treated as cities.
 
 Target design:
 
@@ -83,6 +85,8 @@ The company expense report system requires attachable artifacts in PDF form. Exp
 - the readable expense index and reconciliation notes are generated as PDFs.
 
 The export builder must fail closed when an Expense Folder references a missing expense or receipt artifact, rather than generating a package with dropped evidence.
+
+Mobile export should prefer the browser file-share sheet for the generated zip when supported, so iPhone users can send the Export Package through Mail. The fallback is a direct zip download. Zip entries should stay simple and short, without standalone folder entries, to keep iOS extraction reliable.
 
 ## Review Gate
 
