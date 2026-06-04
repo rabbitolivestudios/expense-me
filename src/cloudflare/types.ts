@@ -13,6 +13,10 @@ export interface CloudflareEnv {
   AGENTMAIL_INBOX_ID?: string;
   AGENTMAIL_BASE_URL?: string;
   AGENTMAIL_WEBHOOK_SECRET?: string;
+  GOTENBERG_URL?: string;
+  GOTENBERG_BEARER_TOKEN?: string;
+  GOTENBERG_ACCESS_CLIENT_ID?: string;
+  GOTENBERG_ACCESS_CLIENT_SECRET?: string;
 }
 
 export interface AccessUser {

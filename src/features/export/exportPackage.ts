@@ -119,9 +119,18 @@ export interface ExportPackageBuildInput {
   receiptArtifacts?: ReceiptArtifact[];
   employeeName: string;
   reportReference: string;
+  renderHtmlToPdf?: RenderHtmlToPdf;
 }
 
 export type ExportPackageFiles = Record<string, string>;
+
+export interface HtmlPdfRenderContext {
+  artifactId: string;
+  filename: string;
+  sourceMessageId?: string;
+}
+
+export type RenderHtmlToPdf = (html: string, context: HtmlPdfRenderContext) => Promise<Uint8Array>;
 
 const csvHeaders = [
   "Expense folder",
@@ -393,8 +402,22 @@ async function buildImagePdf(bytes: Uint8Array, mimeType: string) {
   return pdf.save();
 }
 
-async function buildArtifactPdf(artifact: ReceiptArtifact) {
+async function buildArtifactPdf(
+  artifact: ReceiptArtifact,
+  options: { filename: string; renderHtmlToPdf?: RenderHtmlToPdf }
+) {
   if (artifact.artifactType === "EmailBody") {
+    const mimeType = artifact.dataUrl ? dataUrlMimeType(artifact.dataUrl) ?? artifact.mimeType : artifact.mimeType;
+
+    if (artifact.dataUrl && mimeType === "text/html" && options.renderHtmlToPdf) {
+      const rendered = await options.renderHtmlToPdf(dataUrlToText(artifact.dataUrl), {
+        artifactId: artifact.id,
+        filename: options.filename,
+        sourceMessageId: artifact.sourceMessageId
+      });
+      return new Uint8Array(rendered);
+    }
+
     return buildTextPdf("Email Receipt", artifact.extractedText ?? "Email receipt content was not stored.");
   }
 
@@ -488,7 +511,11 @@ export async function buildExportPackageZip(input: ExportPackageBuildInput) {
 
   if (receiptArtifacts.length > 0) {
     for (const [index, artifact] of receiptArtifacts.entries()) {
-      addZipFile(zip, `receipts/${artifactPdfFilename(artifact, index)}`, await buildArtifactPdf(artifact));
+      const filename = artifactPdfFilename(artifact, index);
+      addZipFile(zip, `receipts/${filename}`, await buildArtifactPdf(artifact, {
+        filename,
+        renderHtmlToPdf: input.renderHtmlToPdf
+      }));
     }
   }
 

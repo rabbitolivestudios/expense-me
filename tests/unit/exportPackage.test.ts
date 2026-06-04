@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import JSZip from "jszip";
 import { seedArtifacts, seedExpenses, seedReports } from "../fixtures";
 import type { ReceiptArtifact } from "../../src/domain/types";
@@ -257,6 +257,45 @@ describe("Export Package readiness", () => {
     expect(zip.file("receipts/receipt-001-email-receipt.pdf")).toBeTruthy();
     expect(zip.file("receipts/receipt-001-email-receipt.txt")).toBeNull();
     await expect(zip.file("receipts/receipt-001-email-receipt.pdf")?.async("string")).resolves.toMatch(/^%PDF/);
+  });
+
+  it("prints stored email HTML through the configured PDF renderer", async () => {
+    const html = "<html><body><table><tr><td>Uber formatted receipt</td></tr></table></body></html>";
+    const encodedHtml = btoa(html);
+    const renderedPdf = new TextEncoder().encode("%PDF-gotenberg-email");
+    const renderHtmlToPdf = vi.fn(async () => renderedPdf);
+    const emailArtifact: ReceiptArtifact = {
+      id: "art-uber-html-email",
+      artifactType: "EmailBody",
+      sourceMessageId: "uber-message-2",
+      mimeType: "text/html",
+      storageKey: "agentmail/uber-message-2",
+      createdAt: "2026-05-20T12:00:00.000Z",
+      extractedText: "Uber\nTotal $18.42",
+      dataUrl: `data:text/html;base64,${encodedHtml}`
+    };
+    const expense = {
+      ...seedExpenses[0],
+      sourceType: "Email" as const,
+      merchant: "Uber",
+      description: "Uber",
+      receiptArtifactIds: [emailArtifact.id]
+    };
+    const archive = await buildExportPackageZip({
+      report: { ...seedReports[0], expenseIds: [expense.id] },
+      expenses: [expense],
+      receiptArtifacts: [emailArtifact],
+      employeeName: "CASTRO Laurent",
+      reportReference: "EXP-1229",
+      renderHtmlToPdf
+    });
+    const zip = await JSZip.loadAsync(archive);
+
+    expect(renderHtmlToPdf).toHaveBeenCalledWith(html, expect.objectContaining({
+      filename: "receipt-001-email-receipt.pdf",
+      sourceMessageId: "uber-message-2"
+    }));
+    await expect(zip.file("receipts/receipt-001-email-receipt.pdf")?.async("string")).resolves.toBe("%PDF-gotenberg-email");
   });
 
   it("wraps scanned receipt image files in PDFs for the expense system", async () => {

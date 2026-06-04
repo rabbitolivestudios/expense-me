@@ -43,7 +43,7 @@ The Inbox keeps the current visible expense order and inserts compact week/year 
 
 Current intake uses browser-local text extraction plus deterministic parsing and keyword categorization. Camera/image uploads run OCR in the browser with Tesseract.js. PDFs use embedded PDF text first and fall back to OCR for scanned pages.
 
-AgentMail intake must parse full message detail (`text`, `html`, `extracted_text`, or `extracted_html`) rather than list summaries. Summary-only imports are allowed to be repaired only when the new parse is at least as confident and has concrete receipt fields, so a low-confidence reparse cannot overwrite existing financial data. Uber receipt imports should keep merchant as `Uber` and, when the receipt includes pickup/dropoff places in the trip details block, use those places in the expense description.
+AgentMail intake must parse full message detail (`text`, `html`, `extracted_text`, or `extracted_html`) rather than list summaries. When HTML is available, the receipt artifact stores that original HTML for export-time printing. Summary-only imports are allowed to be repaired only when the new parse is at least as confident and has concrete receipt fields, so a low-confidence reparse cannot overwrite existing financial data. Re-sync may still upgrade an older text-only email artifact to stored HTML without duplicating or changing the Expense. Uber receipt imports should keep merchant as `Uber` and, when the receipt includes pickup/dropoff places in the trip details block, use those places in the expense description.
 
 When a receipt or card statement exposes a usable city/country, the app should prefill the editable Expense location fields. BofA statement exports sometimes put phone numbers in the merchant city column; those must not be treated as cities.
 
@@ -79,7 +79,7 @@ AgentMail automatic intake should use the same idempotent server sync path as th
 
 The company expense report system requires attachable artifacts in PDF form. Export Packages may keep `entry-spreadsheet.csv` for entry data, but every supporting artifact intended for attachment must be a PDF:
 
-- email receipts are printed into generated PDF copies;
+- email receipts are printed into generated PDF copies; HTML email receipts should use a Chromium renderer such as self-hosted Gotenberg when configured so the PDF preserves the original email formatting;
 - camera/image/scanned receipt artifacts are wrapped in generated PDFs;
 - missing-receipt declarations are generated as PDFs;
 - the readable expense index and reconciliation notes are generated as PDFs.
@@ -88,12 +88,16 @@ The export builder must fail closed when an Expense Folder references a missing 
 
 Mobile export should prefer the browser file-share sheet for the generated zip when supported, so iPhone users can send the Export Package through Mail. The fallback is a direct zip download. Zip entries should stay simple and short, without standalone folder entries, to keep iOS extraction reliable.
 
+For V1.5, the production HTML email renderer is a self-hosted Gotenberg container running on the Mac and exposed as `gotenberg.mac-tbo.com` through Cloudflare Tunnel. The hostname must stay protected by Cloudflare Access Service Auth; Expense Me calls it with `CF-Access-Client-Id` and `CF-Access-Client-Secret` stored as Cloudflare Pages secrets.
+
 ## Review Gate
 
 Code changes should include app documentation updates when behavior changes. Run Clawpatch (`map`, `review`, `report`) before final commit/deploy and triage findings against V1 scope.
 
 ## Deployment
 
-Production URL: `https://expense-me-tbo.vercel.app`
+V1 production URL: `https://expense-me-tbo.vercel.app`
+
+V1.5 production URL: `https://expense.mac-tbo.com`
 
 GitHub repository: `rabbitolivestudios/expense-me`

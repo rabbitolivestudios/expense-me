@@ -4,6 +4,7 @@ import { reconcileStatementCharges } from "../features/statements/reconciliation
 import { reportLabelForExpenseIds } from "../app/appState";
 import { normalizeCloudSnapshot } from "./appSnapshot";
 import { loadArtifactDataUrl, storeArtifactData } from "./artifactStore";
+import { hasGotenbergRenderer, renderHtmlToPdfWithGotenberg } from "./gotenbergPdf";
 import { decodePayload, encodePayload, stripArtifactDataUrl } from "./schema";
 import type { AccessUser, CloudSnapshot, CloudflareEnv, WorkspaceContext } from "./types";
 
@@ -512,7 +513,10 @@ export class D1ExpenseMeRepository {
       expenses: snapshot.expenses,
       receiptArtifacts,
       employeeName: options.employeeName,
-      reportReference: options.reportReference
+      reportReference: options.reportReference,
+      renderHtmlToPdf: hasGotenbergRenderer(this.env)
+        ? (html, renderContext) => renderHtmlToPdfWithGotenberg(this.env, html, renderContext)
+        : undefined
     });
     const now = new Date().toISOString();
     const id = `export-package-${crypto.randomUUID()}`;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Expense } from "../../src/domain/types";
-import { buildEmailReceiptText, createExpenseFromEmailMessage, mergeEmailExpenseRepair, shouldRepairEmailExpense } from "../../src/features/email/emailExpense";
+import { buildEmailReceiptHtml, buildEmailReceiptText, createExpenseFromEmailMessage, mergeEmailExpenseRepair, shouldRepairEmailExpense } from "../../src/features/email/emailExpense";
 import { createExpenseFromExtractedText } from "../../src/features/extraction/extractionPipeline";
 import { parseReceiptText } from "../../src/features/extraction/receiptParser";
 
@@ -138,6 +138,17 @@ describe("email receipt expense conversion", () => {
     expect(text).toContain("Total $21.55");
   });
 
+  it("preserves AgentMail HTML for printed email receipt PDFs", () => {
+    const html = buildEmailReceiptHtml({
+      message_id: "m1",
+      subject: "Your trip with Uber",
+      html: "<html><body><table><tr><td style=\"font-weight:700\">Uber receipt</td></tr></table></body></html>"
+    });
+
+    expect(html).toContain("<table>");
+    expect(html).toContain("Uber receipt");
+  });
+
   it("creates an email expense from the detailed message body instead of the forwarded subject", () => {
     const bundle = createExpenseFromEmailMessage({
       message_id: "<msg-1@example.com>",
@@ -154,6 +165,19 @@ describe("email receipt expense conversion", () => {
     expect(bundle.expense.originalAmount).toBe(16.8);
     expect(bundle.expense.expenseType).toBe("Transport");
     expect(bundle.expense.subExpenseType).toBe("Taxi");
+    expect(bundle.artifact.extractedText).toContain("Total $16.80");
+  });
+
+  it("stores HTML email artifacts as HTML data for export rendering", () => {
+    const bundle = createExpenseFromEmailMessage({
+      message_id: "<msg-html@example.com>",
+      subject: "Your trip with Uber",
+      timestamp: "2026-06-03T14:23:00.000Z",
+      html: "<html><body><table><tr><td>Uber formatted receipt</td></tr></table><p>Total $16.80</p></body></html>"
+    });
+
+    expect(bundle.artifact.mimeType).toBe("text/html");
+    expect(bundle.artifact.dataUrl).toMatch(/^data:text\/html;base64,/);
     expect(bundle.artifact.extractedText).toContain("Total $16.80");
   });
 

@@ -34,6 +34,19 @@ function htmlToText(html: string) {
   ).trim();
 }
 
+function looksLikeHtml(value: string) {
+  return /<\/?[a-z][\s\S]*>/i.test(value);
+}
+
+function addHtmlPart(parts: string[], value: unknown) {
+  if (typeof value !== "string") return;
+
+  const trimmed = value.trim();
+  if (!trimmed || !looksLikeHtml(trimmed)) return;
+
+  parts.push(trimmed);
+}
+
 function addTextPart(parts: string[], value: unknown) {
   if (typeof value !== "string") return;
 
@@ -68,6 +81,53 @@ function collectBodyText(message: AgentMailMessageSummary) {
   return parts;
 }
 
+function collectBodyHtml(message: AgentMailMessageSummary) {
+  const parts: string[] = [];
+
+  addHtmlPart(parts, message.html);
+  addHtmlPart(parts, message.body_html);
+  addHtmlPart(parts, message.extracted_html);
+
+  for (const container of [message.body, message.content]) {
+    if (typeof container === "string") {
+      addHtmlPart(parts, container);
+    } else if (container && typeof container === "object") {
+      const fields = container as Record<string, unknown>;
+      for (const key of ["html", "body_html", "extracted_html", "body", "content"]) {
+        addHtmlPart(parts, fields[key]);
+      }
+    }
+  }
+
+  return parts;
+}
+
+function textDataUrl(value: string, mimeType: "text/html" | "text/plain") {
+  const bytes = new TextEncoder().encode(value);
+  let binary = "";
+
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+
+  return `data:${mimeType};base64,${btoa(binary)}`;
+}
+
+function emailHtmlDocument(html: string, subject?: string) {
+  if (/<html[\s>]/i.test(html)) return html;
+
+  const title = subject
+    ? subject.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    : "Email receipt";
+
+  return `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title></head><body>${html}</body></html>`;
+}
+
+export function buildEmailReceiptHtml(message: AgentMailMessageSummary) {
+  const [html] = collectBodyHtml(message);
+  return html ? emailHtmlDocument(html, message.subject) : undefined;
+}
+
 export function buildEmailReceiptText(message: AgentMailMessageSummary) {
   const parts = [
     message.subject ? `Subject: ${message.subject}` : "",
@@ -84,6 +144,8 @@ export function createExpenseFromEmailMessage(message: AgentMailMessageSummary):
   const id = `exp-email-${safeId(message.message_id)}`;
   const artifactId = `art-email-${safeId(message.message_id)}`;
   const text = buildEmailReceiptText(message) || "Email receipt";
+  const html = buildEmailReceiptHtml(message);
+  const mimeType = html ? "text/html" : "text/plain";
   const expense = createExpenseFromExtractedText(id, text, {
     fallbackDate: message.timestamp ? message.timestamp.slice(0, 10) : undefined,
     sourceType: "Email"
@@ -101,10 +163,11 @@ export function createExpenseFromEmailMessage(message: AgentMailMessageSummary):
       id: artifactId,
       artifactType: "EmailBody",
       sourceMessageId: message.message_id,
-      mimeType: "text/plain",
+      mimeType,
       storageKey: `agentmail/${message.message_id}`,
       createdAt: message.timestamp ?? new Date().toISOString(),
-      extractedText: text
+      extractedText: text,
+      dataUrl: textDataUrl(html ?? text, mimeType)
     }
   };
 }

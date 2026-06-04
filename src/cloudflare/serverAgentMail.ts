@@ -161,6 +161,13 @@ function artifactWithBodyData(artifact: ReceiptArtifact) {
   return artifact.dataUrl ? artifact : { ...artifact, dataUrl: textDataUrl(artifact.extractedText ?? "") };
 }
 
+function shouldUpgradeEmailArtifact(existing: ReceiptArtifact | undefined, next: ReceiptArtifact) {
+  return next.artifactType === "EmailBody" &&
+    next.mimeType === "text/html" &&
+    Boolean(next.dataUrl) &&
+    (!existing || existing.mimeType !== "text/html");
+}
+
 async function recordSyncFailure(
   repository: AgentMailSyncRepository,
   context: WorkspaceContext,
@@ -223,6 +230,16 @@ export async function syncServerAgentMail(
       .filter((item): item is { bundle: (typeof bundles)[number]; existing: Expense } =>
         item.existing !== undefined && shouldRepairEmailExpense(item.existing, item.bundle.expense)
       );
+    const repairExpenseIds = new Set(repairBundles.map(({ existing }) => existing.id));
+    const artifactsById = new Map(snapshot.receiptArtifacts.map((artifact) => [artifact.id, artifact]));
+    const artifactUpgradeBundles = bundles
+      .map((bundle) => ({ bundle, existing: existingExpensesById.get(bundle.expense.id) }))
+      .filter((item): item is { bundle: (typeof bundles)[number]; existing: Expense } => item.existing !== undefined)
+      .filter(({ bundle, existing }) => {
+        if (repairExpenseIds.has(existing.id)) return false;
+        const artifactId = existing.receiptArtifactIds[0] ?? bundle.artifact.id;
+        return shouldUpgradeEmailArtifact(artifactsById.get(artifactId), bundle.artifact);
+      });
     const expenseIdsForFolder: string[] = [];
 
     attemptedCount = messages.length;
@@ -252,6 +269,16 @@ export async function syncServerAgentMail(
       if (needsFolderAssignment) {
         expenseIdsForFolder.push(expense.id);
       }
+      repairedCount += 1;
+    }
+
+    for (const { bundle, existing } of artifactUpgradeBundles) {
+      const artifactId = existing.receiptArtifactIds[0] ?? bundle.artifact.id;
+      const artifact = artifactWithBodyData({ ...bundle.artifact, id: artifactId });
+
+      await repository.upsertReceiptArtifact(context, artifact, {
+        expectedVersion: snapshot.recordVersions.receiptArtifacts[artifact.id]
+      });
       repairedCount += 1;
     }
 

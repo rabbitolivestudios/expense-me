@@ -408,6 +408,61 @@ describe("cloud API router", () => {
     );
   });
 
+  it("upgrades existing AgentMail artifacts with stored HTML on re-sync", async () => {
+    const repository = repositoryStub();
+    repository.getSnapshot.mockResolvedValue({
+      ...snapshot,
+      expenses: [{ ...seedExpenses[0], id: "exp-email-m1", sourceType: "Email", receiptArtifactIds: ["art-email-m1"] }],
+      receiptArtifacts: [{
+        id: "art-email-m1",
+        artifactType: "EmailBody",
+        sourceMessageId: "m1",
+        mimeType: "text/plain",
+        storageKey: "agentmail/m1",
+        createdAt: "2026-06-03T14:00:00.000Z",
+        extractedText: "Uber\nTotal $18.42"
+      }],
+      reports: [{ id: "report-active", name: "Active", expenseIds: ["exp-email-m1"], status: "Draft", dateRangeLabel: "", createdAt: "" }],
+      recordVersions: {
+        expenses: { "exp-email-m1": 2 },
+        reports: {},
+        receiptArtifacts: { "art-email-m1": 4 },
+        statementCharges: {},
+        exportPackages: {}
+      }
+    });
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(mockJsonResponse({ messages: [{ message_id: "m1", subject: "Uber receipt", timestamp: "2026-06-03T14:00:00.000Z" }] }))
+      .mockResolvedValueOnce(mockJsonResponse({
+        message_id: "m1",
+        html: "<html><body><table><tr><td>Uber formatted receipt</td></tr></table><p>Total $18.42</p></body></html>",
+        timestamp: "2026-06-03T14:00:00.000Z"
+      }));
+    vi.stubGlobal("fetch", fetcher);
+
+    const response = await handleApiRequest(
+      localRequest("/api/email/sync", { method: "POST" }),
+      { ...env, AGENTMAIL_API_KEY: "test-key", AGENTMAIL_BASE_URL: "https://agentmail.test" },
+      { repository: repository as never }
+    );
+
+    expect(response.status).toBe(200);
+    expect(repository.upsertReceiptArtifact).toHaveBeenCalledWith(
+      context,
+      expect.objectContaining({
+        id: "art-email-m1",
+        mimeType: "text/html",
+        dataUrl: expect.stringMatching(/^data:text\/html;base64,/)
+      }),
+      { expectedVersion: 4 }
+    );
+    expect(repository.upsertExpense).not.toHaveBeenCalled();
+    expect(repository.recordSyncRun).toHaveBeenCalledWith(
+      context,
+      expect.objectContaining({ source: "AgentMail", attemptedCount: 1, importedCount: 0, repairedCount: 1, skippedCount: 0 })
+    );
+  });
+
   it("returns stable public text when server-side AgentMail sync fails", async () => {
     const repository = repositoryStub();
     const fetcher = vi.fn().mockResolvedValue(mockJsonResponse({ error: "upstream failed" }, 503));

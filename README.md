@@ -23,13 +23,13 @@ The current app has the first V1 implementation of expenses, card reconciliation
 - Mobile-first inbox, capture, cards, reports, and export screens, with week/year separators for the visible expense list
 - Active Expense Folder selector on Inbox for the default capture/email/statement assignment, plus an Export Package folder selector for choosing what to export
 - Camera/image/PDF/manual intake with browser-local OCR and PDF text extraction
-- AgentMail inbox sync for `expense-me@agentmail.to`, including full message detail parsing, Uber pickup/dropoff descriptions, and repair of older summary-only imports
+- AgentMail inbox sync for `expense-me@agentmail.to`, including full message detail parsing, Uber pickup/dropoff descriptions, stored HTML email receipts, and repair of older summary-only imports
 - V1.5 AgentMail webhook intake for automatic received-message sync after Cloudflare deployment
 - Company-style expense type, sub-expense type, region, and country fields
 - Meal attendee count support
 - Card statement import and matching for CSV, QBO/OFX, and XLSX exports, including statement-provided merchant city/country when available
 - Swipe-left and detail-screen expense deletion with confirmation
-- Export package generation with the entry spreadsheet plus PDF receipt copies, PDF declarations, PDF reconciliation notes, and a PDF expense index
+- Export package generation with the entry spreadsheet plus PDF receipt copies, PDF declarations, PDF reconciliation notes, and a PDF expense index. When `GOTENBERG_URL` is configured, HTML email receipts are printed through Chromium so the exported receipt PDF preserves the original email formatting.
 
 ## Documentation
 
@@ -88,6 +88,7 @@ V1 remains live on Vercel at `expense-me-tbo.vercel.app` as the fallback product
 - Cloud Export Package downloads fetch the zip bytes and save a Blob named after the selected Expense Folder. The PWA service worker must denylist `/api/*` navigations so API download routes cannot be served as cached app-shell HTML.
 - iPhone export should use the browser file-share sheet when available so the generated zip can be sent to Mail or saved elsewhere. Download remains the fallback for browsers without file sharing.
 - Export Package zip entries use short receipt filenames and omit standalone folder entries for better iOS extraction compatibility.
+- Email receipt artifacts store the original AgentMail HTML when available. Re-syncing AgentMail upgrades older text-only email artifacts to HTML without duplicating the Expense. Configure `GOTENBERG_URL` to print those HTML receipts into browser-rendered PDFs during Export Package generation.
 
 Required Wrangler setup commands:
 
@@ -101,7 +102,28 @@ npx wrangler pages secret put ACCESS_ALLOWED_EMAIL --project-name expense-me-v15
 npx wrangler pages secret put AGENTMAIL_API_KEY --project-name expense-me-v15
 npx wrangler pages secret put AGENTMAIL_INBOX_ID --project-name expense-me-v15
 npx wrangler pages secret put AGENTMAIL_WEBHOOK_SECRET --project-name expense-me-v15
+npx wrangler pages secret put GOTENBERG_URL --project-name expense-me-v15
 ```
+
+Optional Gotenberg protection secrets:
+
+```bash
+npx wrangler pages secret put GOTENBERG_BEARER_TOKEN --project-name expense-me-v15
+npx wrangler pages secret put GOTENBERG_ACCESS_CLIENT_ID --project-name expense-me-v15
+npx wrangler pages secret put GOTENBERG_ACCESS_CLIENT_SECRET --project-name expense-me-v15
+```
+
+`GOTENBERG_URL` should point to a self-hosted Gotenberg service, for example a Docker container on the Mac exposed through a Cloudflare Tunnel. The current V1.5 renderer is `gotenberg.mac-tbo.com`, protected by Cloudflare Access Service Auth. Expense Me posts `index.html` to `/forms/chromium/convert/html` and expects a PDF response. Set `GOTENBERG_ACCESS_CLIENT_ID` and `GOTENBERG_ACCESS_CLIENT_SECRET` Pages secrets when the renderer is behind Access; do not leave the renderer public.
+
+Current Mac renderer runtime:
+
+```bash
+colima status
+colima start
+docker start expense-me-gotenberg
+```
+
+The Colima LaunchAgent is loaded through `brew services start colima` so Colima starts at login. The container is bound to `127.0.0.1:3000` and is exposed only through the Cloudflare Tunnel ingress for `gotenberg.mac-tbo.com`.
 
 After creating the D1 database, add the real `EXPENSE_ME_DB` binding and `EXPENSE_ME_ARTIFACTS` bucket binding to `wrangler.toml`, then apply migrations with `npm run cf:d1:migrations` and `npm run cf:d1:migrations:remote`.
 
