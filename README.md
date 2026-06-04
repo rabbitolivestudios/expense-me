@@ -107,6 +107,12 @@ npx wrangler pages secret put EXPORT_PACKAGE_EMAIL_TO --project-name expense-me-
 npx wrangler pages secret put GOTENBERG_URL --project-name expense-me-v15
 ```
 
+For branch deployments such as `v15-single-source`, mirror runtime secrets that affect live behavior into the Pages preview environment as well:
+
+```bash
+npx wrangler pages secret put EXPORT_PACKAGE_EMAIL_TO --project-name expense-me-v15 --env preview
+```
+
 Optional Gotenberg protection secrets:
 
 ```bash
