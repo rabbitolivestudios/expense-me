@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { handleApiRequest } from "../../src/cloudflare/apiRouter";
-import { VersionConflictError } from "../../src/cloudflare/d1Repository";
+import { ExportPackageNotFoundError, VersionConflictError } from "../../src/cloudflare/d1Repository";
 import type { CloudSnapshot, CloudflareEnv, WorkspaceContext } from "../../src/cloudflare/types";
 import { seedExpenses, seedReports, seedStatementCharges } from "../fixtures";
 
@@ -125,10 +125,10 @@ async function svixSignature(secret: string, id: string, timestamp: string, body
   return `v1,${bytesToBase64(signature)}`;
 }
 
-async function agentMailWebhookRequest(payload: unknown, options: { signature?: string } = {}) {
+async function agentMailWebhookRequest(payload: unknown, options: { signature?: string; timestamp?: string } = {}) {
   const body = JSON.stringify(payload);
   const id = "msg_webhook_1";
-  const timestamp = Math.floor(Date.now() / 1000).toString();
+  const timestamp = options.timestamp ?? Math.floor(Date.now() / 1000).toString();
   const signature = options.signature ?? await svixSignature(testWebhookSecret, id, timestamp, body);
 
   return new Request("https://expense.mac-tbo.com/api/agentmail/webhook", {
@@ -219,6 +219,42 @@ describe("cloud API router", () => {
     expect(repository.upsertExpense).toHaveBeenCalledWith(context, seedExpenses[0], { expectedVersion: 3 });
   });
 
+  it("returns 400 for malformed JSON request bodies", async () => {
+    const repository = repositoryStub();
+
+    const response = await handleApiRequest(
+      localRequest("/api/expenses", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{"
+      }),
+      env,
+      { repository: repository as never }
+    );
+
+    expect(response.status).toBe(400);
+    await expect(jsonBody(response)).resolves.toEqual({ error: "Request body must be valid JSON." });
+    expect(repository.upsertExpense).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 when an expense mutation is missing the Expense payload", async () => {
+    const repository = repositoryStub();
+
+    const response = await handleApiRequest(
+      localRequest("/api/expenses", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({})
+      }),
+      env,
+      { repository: repository as never }
+    );
+
+    expect(response.status).toBe(400);
+    await expect(jsonBody(response)).resolves.toEqual({ error: "Expense is required." });
+    expect(repository.upsertExpense).not.toHaveBeenCalled();
+  });
+
   it("decodes expense IDs and passes expectedVersion to expense deletes", async () => {
     const repository = repositoryStub();
 
@@ -307,6 +343,154 @@ describe("cloud API router", () => {
     });
   });
 
+  it("returns 400 when Export Package creation is missing the Expense Folder id", async () => {
+    const repository = repositoryStub();
+
+    const response = await handleApiRequest(
+      localRequest("/api/export-packages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({})
+      }),
+      env,
+      { repository: repository as never }
+    );
+
+    expect(response.status).toBe(400);
+    await expect(jsonBody(response)).resolves.toEqual({ error: "Expense Folder is required." });
+    expect(repository.createExportPackage).not.toHaveBeenCalled();
+  });
+
+  it("creates and emails an Export Package to the configured work address", async () => {
+    const repository = repositoryStub();
+    const sendExportPackageEmail = vi.fn().mockResolvedValue({
+      messageId: "agentmail-message-1",
+      threadId: "agentmail-thread-1",
+      recipient: "thiago.oliveira@arcelormittal.com",
+      subject: "Expense Me Export Package - Chicago Training - May 2026"
+    });
+
+    const response = await handleApiRequest(
+      localRequest("/api/export-packages/email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reportId: "report-1", employeeName: "Thiago Oliveira", reportReference: "EXP-1" })
+      }),
+      {
+        ...env,
+        AGENTMAIL_API_KEY: "test-key",
+        AGENTMAIL_BASE_URL: "https://agentmail.test",
+        EXPORT_PACKAGE_EMAIL_TO: "thiago.oliveira@arcelormittal.com"
+      },
+      { repository: repository as never, sendExportPackageEmail } as never
+    );
+
+    expect(response.status).toBe(200);
+    await expect(jsonBody(response)).resolves.toEqual({
+      exportPackage: expect.objectContaining({ id: "export-package-1", reportId: "report-1" }),
+      downloadUrl: "/api/export-packages/export-package-1/download",
+      email: {
+        messageId: "agentmail-message-1",
+        threadId: "agentmail-thread-1",
+        recipient: "thiago.oliveira@arcelormittal.com",
+        subject: "Expense Me Export Package - Chicago Training - May 2026"
+      }
+    });
+    expect(repository.createExportPackage).toHaveBeenCalledWith(context, {
+      reportId: "report-1",
+      employeeName: "Thiago Oliveira",
+      reportReference: "EXP-1"
+    });
+    expect(repository.getExportPackageDownload).toHaveBeenCalledWith(context, "export-package-1");
+    expect(sendExportPackageEmail).toHaveBeenCalledWith(
+      expect.objectContaining({ AGENTMAIL_API_KEY: "test-key" }),
+      expect.objectContaining({
+        recipient: "thiago.oliveira@arcelormittal.com",
+        folderName: "Chicago Training - May 2026",
+        filename: "Chicago Training - May 2026.zip",
+        zipBytes: expect.any(Uint8Array)
+      })
+    );
+  });
+
+  it("keeps unknown Expense Folder email exports as 404 instead of email failures", async () => {
+    const repository = repositoryStub();
+    repository.createExportPackage.mockRejectedValueOnce(new ExportPackageNotFoundError());
+    const sendExportPackageEmail = vi.fn();
+
+    const response = await handleApiRequest(
+      localRequest("/api/export-packages/email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reportId: "missing-folder" })
+      }),
+      { ...env, AGENTMAIL_API_KEY: "test-key", EXPORT_PACKAGE_EMAIL_TO: "thiago.oliveira@arcelormittal.com" },
+      { repository: repository as never, sendExportPackageEmail } as never
+    );
+
+    expect(response.status).toBe(404);
+    await expect(jsonBody(response)).resolves.toEqual({ error: "Export Package not found." });
+    expect(sendExportPackageEmail).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 when Export Package email is missing the Expense Folder id", async () => {
+    const repository = repositoryStub();
+    const sendExportPackageEmail = vi.fn();
+
+    const response = await handleApiRequest(
+      localRequest("/api/export-packages/email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({})
+      }),
+      { ...env, AGENTMAIL_API_KEY: "test-key" },
+      { repository: repository as never, sendExportPackageEmail } as never
+    );
+
+    expect(response.status).toBe(400);
+    await expect(jsonBody(response)).resolves.toEqual({ error: "Expense Folder is required." });
+    expect(repository.createExportPackage).not.toHaveBeenCalled();
+    expect(sendExportPackageEmail).not.toHaveBeenCalled();
+  });
+
+  it("requires an explicit configured recipient before emailing an Export Package", async () => {
+    const repository = repositoryStub();
+    const sendExportPackageEmail = vi.fn();
+
+    const response = await handleApiRequest(
+      localRequest("/api/export-packages/email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reportId: "report-1" })
+      }),
+      { ...env, AGENTMAIL_API_KEY: "test-key", EXPORT_PACKAGE_EMAIL_TO: "" },
+      { repository: repository as never, sendExportPackageEmail } as never
+    );
+
+    expect(response.status).toBe(500);
+    await expect(jsonBody(response)).resolves.toEqual({ error: "Export Package email is not configured." });
+    expect(repository.createExportPackage).not.toHaveBeenCalled();
+    expect(sendExportPackageEmail).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 when receipt upload is missing the artifact payload", async () => {
+    const repository = repositoryStub();
+
+    const response = await handleApiRequest(
+      localRequest("/api/receipts/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({})
+      }),
+      env,
+      { repository: repository as never }
+    );
+
+    expect(response.status).toBe(400);
+    await expect(jsonBody(response)).resolves.toEqual({ error: "Receipt artifact is required." });
+    expect(repository.upsertReceiptArtifact).not.toHaveBeenCalled();
+  });
+
   it("downloads Export Package zip bytes with an Expense Folder filename", async () => {
     const repository = repositoryStub();
 
@@ -371,6 +555,63 @@ describe("cloud API router", () => {
       context,
       expect.objectContaining({ source: "AgentMail", attemptedCount: 1, importedCount: 1, repairedCount: 0, skippedCount: 0 })
     );
+  });
+
+  it("treats sync run logging failures as best-effort after imports were applied", async () => {
+    const repository = repositoryStub();
+    repository.getSnapshot.mockResolvedValue({
+      ...snapshot,
+      expenses: [],
+      receiptArtifacts: [],
+      reports: [{ id: "report-active", name: "Active", expenseIds: [], status: "Draft", dateRangeLabel: "", createdAt: "" }],
+      recordVersions: {
+        expenses: {},
+        reports: {},
+        receiptArtifacts: {},
+        statementCharges: {},
+        exportPackages: {}
+      }
+    });
+    repository.recordSyncRun.mockRejectedValue(new Error("log write failed"));
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(mockJsonResponse({ messages: [{ message_id: "m1", subject: "Uber receipt", timestamp: "2026-06-03T14:00:00.000Z" }] }))
+      .mockResolvedValueOnce(mockJsonResponse({ message_id: "m1", text: "Uber\nJun 3, 2026\nTotal $18.42", timestamp: "2026-06-03T14:00:00.000Z" }));
+    vi.stubGlobal("fetch", fetcher);
+
+    const response = await handleApiRequest(
+      localRequest("/api/email/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reportId: "report-active" })
+      }),
+      { ...env, AGENTMAIL_API_KEY: "test-key", AGENTMAIL_BASE_URL: "https://agentmail.test" },
+      { repository: repository as never }
+    );
+
+    expect(response.status).toBe(200);
+    expect(repository.upsertExpense).toHaveBeenCalledWith(
+      context,
+      expect.objectContaining({ id: "exp-email-m1", reportId: "report-active" }),
+      {}
+    );
+  });
+
+  it("returns 400 for malformed email sync JSON instead of reporting an upstream sync failure", async () => {
+    const repository = repositoryStub();
+
+    const response = await handleApiRequest(
+      localRequest("/api/email/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{"
+      }),
+      { ...env, AGENTMAIL_API_KEY: "test-key" },
+      { repository: repository as never }
+    );
+
+    expect(response.status).toBe(400);
+    await expect(jsonBody(response)).resolves.toEqual({ error: "Request body must be valid JSON." });
+    expect(repository.recordSyncRun).not.toHaveBeenCalled();
   });
 
   it("does not duplicate an AgentMail message that already has an Expense", async () => {
@@ -525,6 +766,52 @@ describe("cloud API router", () => {
       expect.objectContaining({ id: "exp-email-m1", reportId: "report-active", sourceType: "Email" }),
       {}
     );
+  });
+
+  it("accepts comma-delimited AgentMail webhook signatures", async () => {
+    const repository = repositoryStub();
+    repository.getSnapshot.mockResolvedValue({
+      ...snapshot,
+      expenses: [],
+      receiptArtifacts: [],
+      reports: [{ id: "report-active", name: "Active", expenseIds: [], status: "Draft", dateRangeLabel: "", createdAt: "" }],
+      recordVersions: {
+        expenses: {},
+        reports: {},
+        receiptArtifacts: {},
+        statementCharges: {},
+        exportPackages: {}
+      }
+    });
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(mockJsonResponse({ messages: [{ message_id: "m1", subject: "Uber receipt", timestamp: "2026-06-03T14:00:00.000Z" }] }))
+      .mockResolvedValueOnce(mockJsonResponse({ message_id: "m1", text: "Uber\nJun 3, 2026\nTotal $18.42", timestamp: "2026-06-03T14:00:00.000Z" }));
+    vi.stubGlobal("fetch", fetcher);
+
+    const payload = {
+      type: "event",
+      event_type: "message.received",
+      event_id: "event-1",
+      message: { inbox_id: "expense-me@agentmail.to", message_id: "m1" }
+    };
+    const body = JSON.stringify(payload);
+    const timestamp = Math.floor(Date.now() / 1000).toString();
+    const signature = await svixSignature(testWebhookSecret, "msg_webhook_1", timestamp, body);
+
+    const response = await handleApiRequest(
+      await agentMailWebhookRequest(payload, { signature: `v1,older-signature,${signature}`, timestamp }),
+      {
+        ...env,
+        AGENTMAIL_API_KEY: "test-key",
+        AGENTMAIL_BASE_URL: "https://agentmail.test",
+        AGENTMAIL_WEBHOOK_SECRET: testWebhookSecret
+      },
+      { repository: repository as never }
+    );
+
+    expect(response.status).toBe(200);
+    await expect(jsonBody(response)).resolves.toEqual({ ok: true });
+    expect(repository.upsertExpense).toHaveBeenCalled();
   });
 
   it("rejects an AgentMail webhook with a bad signature", async () => {

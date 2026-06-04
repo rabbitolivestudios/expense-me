@@ -1,4 +1,4 @@
-import { ArrowLeft, CheckCircle2, Clock3, PackageCheck } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Clock3, Download, Mail, PackageCheck } from "lucide-react";
 import { useState } from "react";
 import { expenseFolderDateRangeLabel } from "../../domain/reportDates";
 import type { Expense, ReceiptArtifact, Report } from "../../domain/types";
@@ -12,11 +12,21 @@ interface ExportScreenProps {
   receiptArtifacts: ReceiptArtifact[];
   onBack: () => void;
   onGenerateExportPackage?: (reportId: string) => Promise<void>;
+  onEmailExportPackage?: (reportId: string) => Promise<string | undefined>;
 }
 
-export function ExportScreen({ reports, expenses, receiptArtifacts, onBack, onGenerateExportPackage }: ExportScreenProps) {
+export function ExportScreen({
+  reports,
+  expenses,
+  receiptArtifacts,
+  onBack,
+  onGenerateExportPackage,
+  onEmailExportPackage
+}: ExportScreenProps) {
   const [selectedReportId, setSelectedReportId] = useState(reports[0]?.id ?? "");
   const [statusMessage, setStatusMessage] = useState("");
+  const [showDeliveryActions, setShowDeliveryActions] = useState(false);
+  const [busyAction, setBusyAction] = useState<"save" | "email" | null>(null);
   const report = reports.find((item) => item.id === selectedReportId) ?? reports[0];
   if (!report) {
     return (
@@ -40,24 +50,51 @@ export function ExportScreen({ reports, expenses, receiptArtifacts, onBack, onGe
   const hasExpenses = report.expenseIds.length > 0;
   const ready = hasExpenses && checklist.length === 0;
 
-  async function generatePackage() {
-    setStatusMessage("Generating Export Package...");
-    if (onGenerateExportPackage) {
-      await onGenerateExportPackage(report.id);
-      setStatusMessage("Export Package downloaded.");
-      return;
-    }
+  function revealDeliveryActions() {
+    setShowDeliveryActions(true);
+    setStatusMessage("");
+  }
 
-    const archive = await buildExportPackageZip({
-      report,
-      expenses,
-      receiptArtifacts,
-      employeeName: "Employee name not set",
-      reportReference: report.id
-    });
-    const blob = new Blob([archive as BlobPart], { type: "application/zip" });
-    await shareOrDownloadZip(blob, `Expense-Me-${report.name.replace(/[^a-z0-9]+/gi, "-")}.zip`);
-    setStatusMessage("Export Package downloaded.");
+  async function savePackage() {
+    setBusyAction("save");
+    setStatusMessage("Preparing Export Package...");
+    try {
+      if (onGenerateExportPackage) {
+        await onGenerateExportPackage(report.id);
+        setStatusMessage("Export Package downloaded.");
+        return;
+      }
+
+      const archive = await buildExportPackageZip({
+        report,
+        expenses,
+        receiptArtifacts,
+        employeeName: "Employee name not set",
+        reportReference: report.id
+      });
+      const blob = new Blob([archive as BlobPart], { type: "application/zip" });
+      await shareOrDownloadZip(blob, `Expense-Me-${report.name.replace(/[^a-z0-9]+/gi, "-")}.zip`);
+      setStatusMessage("Export Package downloaded.");
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Export Package failed.");
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
+  async function emailPackage() {
+    if (!onEmailExportPackage) return;
+
+    setBusyAction("email");
+    setStatusMessage("Sending Export Package...");
+    try {
+      const recipient = await onEmailExportPackage(report.id);
+      setStatusMessage(`Export Package emailed to ${recipient ?? "work email"}.`);
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "Export Package email failed.");
+    } finally {
+      setBusyAction(null);
+    }
   }
 
   return (
@@ -88,6 +125,7 @@ export function ExportScreen({ reports, expenses, receiptArtifacts, onBack, onGe
           onChange={(event) => {
             setSelectedReportId(event.target.value);
             setStatusMessage("");
+            setShowDeliveryActions(false);
           }}
         >
           {reports.map((item) => (
@@ -123,9 +161,24 @@ export function ExportScreen({ reports, expenses, receiptArtifacts, onBack, onGe
 
       {statusMessage && <p className="export-status">{statusMessage}</p>}
 
-      <button className="primary-action" type="button" disabled={!ready} onClick={() => void generatePackage()}>
+      <button className="primary-action" type="button" disabled={!ready || busyAction !== null} onClick={revealDeliveryActions}>
         Generate Export Package
       </button>
+
+      {showDeliveryActions && ready && (
+        <div className="export-delivery-actions" role="group" aria-label="Export Package delivery options">
+          <button className="export-delivery-action" type="button" disabled={busyAction !== null} onClick={() => void savePackage()}>
+            <Download aria-hidden="true" />
+            {busyAction === "save" ? "Saving..." : "Save to Device"}
+          </button>
+          {onEmailExportPackage && (
+            <button className="export-delivery-action" type="button" disabled={busyAction !== null} onClick={() => void emailPackage()}>
+              <Mail aria-hidden="true" />
+              {busyAction === "email" ? "Sending..." : "Email to Work"}
+            </button>
+          )}
+        </div>
+      )}
     </section>
   );
 }

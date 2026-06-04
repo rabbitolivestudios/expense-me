@@ -61,7 +61,7 @@ Target design:
 - Do not commit `.env`, Vercel local state, build output, screenshots, or generated export packages.
 - OpenAI API usage, if added, should run server-side only so keys are never exposed in the browser.
 - AgentMail route errors should return stable public messages only; raw upstream errors stay server-side.
-- Current production AgentMail sync is intentionally single-user/prototype scope. It must move behind a real login-backed access boundary when shared cloud data replaces browser-local storage.
+- Current production AgentMail sync is intentionally single-user/prototype scope. V1.5 Cloudflare Access must be configured with `ACCESS_ALLOWED_EMAIL`; missing allowlist configuration rejects users rather than letting any verified Access identity share the one workspace. It must move behind a real login-backed access boundary when shared cloud data replaces browser-local storage.
 - Future shared-data infrastructure should use free-tier services where possible; Cloudflare Workers/Pages, D1, R2, KV, and Access are preferred candidates before adding paid services.
 - V1.5 may expose only the AgentMail webhook path without a human Access JWT. That path must verify AgentMail/Svix webhook signatures with `AGENTMAIL_WEBHOOK_SECRET`, accept only `message.received` as a sync trigger, and keep manual `/api/email/sync` behind Cloudflare Access.
 
@@ -86,7 +86,7 @@ The company expense report system requires attachable artifacts in PDF form. Exp
 
 The export builder must fail closed when an Expense Folder references a missing expense or receipt artifact, rather than generating a package with dropped evidence.
 
-Mobile export should prefer the browser file-share sheet for the generated zip when supported, so iPhone users can send the Export Package through Mail. The fallback is a direct zip download. Zip entries should stay simple and short, without standalone folder entries, to keep iOS extraction reliable.
+Mobile export should prefer the browser file-share sheet for the generated zip when supported, so iPhone users can send the Export Package through Mail. The fallback is a direct zip download. V1.5 also offers server-side delivery from the Export screen: the app creates the ZIP, sends it through AgentMail as an attachment, and uses `EXPORT_PACKAGE_EMAIL_TO` as the work-email recipient. The default subject is `Expense Me Export Package - <Expense Folder name>` so the email remains searchable by folder. Zip entries should stay simple and short, without standalone folder entries, to keep iOS extraction reliable.
 
 For V1.5, the production HTML email renderer is a self-hosted Gotenberg container running on the Mac and exposed as `gotenberg.mac-tbo.com` through Cloudflare Tunnel. The hostname must stay protected by Cloudflare Access Service Auth; Expense Me calls it with `CF-Access-Client-Id` and `CF-Access-Client-Secret` stored as Cloudflare Pages secrets.
 

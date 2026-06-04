@@ -197,6 +197,45 @@ describe("client CloudRepository", () => {
     });
   });
 
+  it("emailExportPackage posts the target Expense Folder to the email export route", async () => {
+    const result = {
+      exportPackage: {
+        id: "export-package-1",
+        reportId: seedReports[0].id,
+        generatedAt: "2026-06-03T18:00:00.000Z",
+        reviewPdfName: "review.txt",
+        spreadsheetName: "entry.csv",
+        receiptsZipName: "receipts.zip",
+        declarationPdfNames: [],
+        reconciliationNotesName: "reconciliation.txt"
+      },
+      downloadUrl: "/api/export-packages/export-package-1/download",
+      email: {
+        messageId: "agentmail-message-1",
+        threadId: "agentmail-thread-1",
+        recipient: "thiago.oliveira@arcelormittal.com",
+        subject: "Expense Me Export Package - June Customer Visit"
+      }
+    };
+    const fetcher = vi.fn().mockResolvedValue(jsonResponse(result));
+    const repository = new CloudRepository(fetcher);
+
+    await expect(repository.emailExportPackage(seedReports[0].id, {
+      employeeName: "Thiago Oliveira",
+      reportReference: "EXP-1"
+    })).resolves.toEqual(result);
+
+    const [url, init] = fetcher.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/export-packages/email");
+    expect(init.method).toBe("POST");
+    expect(init.headers).toEqual({ "Content-Type": "application/json" });
+    expect(requestBody(init)).toEqual({
+      reportId: seedReports[0].id,
+      employeeName: "Thiago Oliveira",
+      reportReference: "EXP-1"
+    });
+  });
+
   it("syncEmail calls the POST email sync route", async () => {
     const fetcher = mutationFetcher();
     const repository = new CloudRepository(fetcher);

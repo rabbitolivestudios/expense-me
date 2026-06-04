@@ -1,5 +1,12 @@
 import type { ApiErrorBody } from "./types";
 
+export class BadRequestError extends Error {
+  constructor(message = "Request body must be valid JSON.") {
+    super(message);
+    this.name = "BadRequestError";
+  }
+}
+
 export function jsonResponse(body: unknown, init: ResponseInit = {}) {
   const headers = new Headers(init.headers);
   headers.set("Content-Type", "application/json");
@@ -11,7 +18,11 @@ export function errorResponse(status: number, error: string) {
 }
 
 export async function readJson<T>(request: Request): Promise<T> {
-  return (await request.json()) as T;
+  try {
+    return (await request.json()) as T;
+  } catch {
+    throw new BadRequestError();
+  }
 }
 
 export async function readOptionalJson<T>(request: Request): Promise<T | undefined> {
@@ -24,5 +35,9 @@ export async function readOptionalJson<T>(request: Request): Promise<T | undefin
     return undefined;
   }
 
-  return JSON.parse(text) as T;
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new BadRequestError();
+  }
 }

@@ -52,12 +52,9 @@ function signingSecretBytes(secret: string) {
 }
 
 function svixV1Signatures(signatureHeader: string) {
-  return signatureHeader
-    .split(/\s+/)
+  return Array.from(signatureHeader.matchAll(/(?:^|[,\s])v1,([^,\s]+)/g), (match) => match[1])
     .map((signature) => signature.trim())
-    .filter(Boolean)
-    .map((signature) => signature.match(/^v1,(.+)$/)?.[1])
-    .filter((signature): signature is string => Boolean(signature));
+    .filter(Boolean);
 }
 
 function constantTimeEqual(left: string, right: string) {

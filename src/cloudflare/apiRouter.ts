@@ -9,7 +9,8 @@ import {
   type MutationResult,
   VersionConflictError
 } from "./d1Repository";
-import { errorResponse, jsonResponse, readJson, readOptionalJson } from "./http";
+import { BadRequestError, errorResponse, jsonResponse, readJson, readOptionalJson } from "./http";
+import { sendExportPackageEmail as defaultSendExportPackageEmail } from "./exportPackageEmail";
 import { syncServerAgentMail } from "./serverAgentMail";
 import type { AccessUser, ApiSnapshotBody, CloudflareEnv, WorkspaceContext } from "./types";
 
@@ -79,6 +80,7 @@ interface CloudApiRepository {
 
 interface RouteDeps {
   repository?: CloudApiRepository;
+  sendExportPackageEmail?: typeof defaultSendExportPackageEmail;
 }
 
 function expectedVersionFromSearch(url: URL) {
@@ -92,17 +94,29 @@ function authErrorResponse(error: Response) {
   return errorResponse(error.status, error.status === 403 ? "Forbidden." : "Unauthorized.");
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
 function downloadFilename(value: string) {
   return `${value.replace(/[<>:"/\\|?*\x00-\x1F]+/g, "-").replace(/^-|-$/g, "") || "Export Package"}.zip`;
 }
 
 function exportPackageDownloadFilename(exportPackage: ExportPackage) {
+  return downloadFilename(exportPackageFolderName(exportPackage));
+}
+
+function exportPackageFolderName(exportPackage: ExportPackage) {
   const folderName =
     exportPackage.spreadsheetName.match(/^(.*)-entry-spreadsheet\.csv$/i)?.[1] ||
     exportPackage.receiptsZipName.match(/^(.*)-receipts\.zip$/i)?.[1] ||
     exportPackage.id;
 
-  return downloadFilename(folderName);
+  return folderName;
 }
 
 export async function handleApiRequest(request: Request, env: CloudflareEnv, deps: RouteDeps = {}) {
@@ -141,6 +155,10 @@ export async function handleApiRequest(request: Request, env: CloudflareEnv, dep
 
     if (request.method === "POST" && url.pathname === "/api/expenses") {
       const body = await readJson<{ expense: Expense; artifacts?: ReceiptArtifact[]; expectedVersion?: number }>(request);
+      if (!isRecord(body.expense)) {
+        return errorResponse(400, "Expense is required.");
+      }
+
       for (const artifact of body.artifacts ?? []) {
         await repository.upsertReceiptArtifact(context, artifact, {});
       }
@@ -152,6 +170,9 @@ export async function handleApiRequest(request: Request, env: CloudflareEnv, dep
     if (request.method === "PATCH" && expensePatch) {
       const expenseId = decodeURIComponent(expensePatch[1]);
       const body = await readJson<{ expense: Expense; expectedVersion?: number }>(request);
+      if (!isRecord(body.expense)) {
+        return errorResponse(400, "Expense is required.");
+      }
       if (body.expense.id !== expenseId) {
         return errorResponse(400, "Expense id mismatch.");
       }
@@ -206,6 +227,10 @@ export async function handleApiRequest(request: Request, env: CloudflareEnv, dep
 
     if (request.method === "POST" && url.pathname === "/api/receipts/upload") {
       const body = await readJson<{ artifact: ReceiptArtifact; expectedVersion?: number }>(request);
+      if (!isRecord(body.artifact)) {
+        return errorResponse(400, "Receipt artifact is required.");
+      }
+
       const result = await repository.upsertReceiptArtifact(context, body.artifact, {
         expectedVersion: body.expectedVersion
       });
@@ -235,6 +260,10 @@ export async function handleApiRequest(request: Request, env: CloudflareEnv, dep
         const result = await syncServerAgentMail(env, context, repository, { targetReportId: body?.reportId });
         return jsonResponse(result);
       } catch (error) {
+        if (error instanceof BadRequestError) {
+          throw error;
+        }
+
         console.error("Email sync failed.", error);
         return errorResponse(502, "Email sync failed.");
       }
@@ -242,6 +271,10 @@ export async function handleApiRequest(request: Request, env: CloudflareEnv, dep
 
     if (request.method === "POST" && url.pathname === "/api/export-packages") {
       const body = await readJson<{ reportId: string; employeeName?: string; reportReference?: string }>(request);
+      if (!isNonEmptyString(body.reportId)) {
+        return errorResponse(400, "Expense Folder is required.");
+      }
+
       const result = await repository.createExportPackage(context, {
         reportId: body.reportId,
         employeeName: body.employeeName ?? "Thiago Oliveira",
@@ -251,6 +284,53 @@ export async function handleApiRequest(request: Request, env: CloudflareEnv, dep
         exportPackage: result.exportPackage,
         downloadUrl: `/api/export-packages/${encodeURIComponent(result.exportPackage.id)}/download`
       });
+    }
+
+    if (request.method === "POST" && url.pathname === "/api/export-packages/email") {
+      try {
+        const body = await readJson<{ reportId: string; employeeName?: string; reportReference?: string }>(request);
+        if (!isNonEmptyString(body.reportId)) {
+          return errorResponse(400, "Expense Folder is required.");
+        }
+
+        const recipient = env.EXPORT_PACKAGE_EMAIL_TO?.trim();
+        if (!recipient) {
+          return errorResponse(500, "Export Package email is not configured.");
+        }
+
+        const snapshot = await repository.getSnapshot(context);
+        const report = snapshot.reports.find((item) => item.id === body.reportId);
+        const result = await repository.createExportPackage(context, {
+          reportId: body.reportId,
+          employeeName: body.employeeName ?? "Thiago Oliveira",
+          reportReference: body.reportReference ?? body.reportId
+        });
+        const { object } = await repository.getExportPackageDownload(context, result.exportPackage.id);
+        const filename = exportPackageDownloadFilename(result.exportPackage);
+        const folderName = report?.name ?? exportPackageFolderName(result.exportPackage);
+        const sendExportPackageEmail = deps.sendExportPackageEmail ?? defaultSendExportPackageEmail;
+        const email = await sendExportPackageEmail(env, {
+          recipient,
+          folderName,
+          filename,
+          zipBytes: new Uint8Array(await object.arrayBuffer()),
+          expenseCount: report?.expenseIds.length,
+          generatedAt: result.exportPackage.generatedAt
+        });
+
+        return jsonResponse({
+          exportPackage: result.exportPackage,
+          downloadUrl: `/api/export-packages/${encodeURIComponent(result.exportPackage.id)}/download`,
+          email
+        });
+      } catch (error) {
+        if (error instanceof BadRequestError || error instanceof ExportPackageNotFoundError) {
+          throw error;
+        }
+
+        console.error("Export Package email failed.", error);
+        return errorResponse(502, "Export Package email failed.");
+      }
     }
 
     const exportDownload = url.pathname.match(/^\/api\/export-packages\/([^/]+)\/download$/);
@@ -267,12 +347,20 @@ export async function handleApiRequest(request: Request, env: CloudflareEnv, dep
 
     if (request.method === "POST" && url.pathname === "/api/migrate-local-snapshot") {
       const body = await readJson<{ snapshot: AppSnapshot }>(request);
+      if (!isRecord(body.snapshot)) {
+        return errorResponse(400, "Snapshot is required.");
+      }
+
       const result = await repository.replaceFromMigration(context, body.snapshot);
       return jsonResponse(result);
     }
 
     return errorResponse(404, "API route not found.");
   } catch (error) {
+    if (error instanceof BadRequestError) {
+      return errorResponse(400, error.message);
+    }
+
     if (error instanceof VersionConflictError) {
       return errorResponse(409, error.message);
     }

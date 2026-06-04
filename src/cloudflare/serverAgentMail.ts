@@ -286,15 +286,19 @@ export async function syncServerAgentMail(
     await repository.addExpensesToFolder?.(context, snapshot, reportId, expenseIdsForFolder);
 
     const finishedAt = new Date().toISOString();
-    await repository.recordSyncRun?.(context, {
-      source: "AgentMail",
-      attemptedCount,
-      importedCount,
-      repairedCount,
-      skippedCount,
-      startedAt,
-      finishedAt
-    });
+    try {
+      await repository.recordSyncRun?.(context, {
+        source: "AgentMail",
+        attemptedCount,
+        importedCount,
+        repairedCount,
+        skippedCount,
+        startedAt,
+        finishedAt
+      });
+    } catch (error) {
+      console.error("Email sync run success could not be recorded.", error);
+    }
 
     return { snapshot: await repository.getSnapshot(context) };
   } catch (error) {

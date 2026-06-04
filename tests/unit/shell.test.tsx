@@ -210,6 +210,28 @@ function installCloudApiMock(options: { syncEmail?: (reportId?: string) => Cloud
       });
     }
 
+    if (url === "/api/export-packages/email" && method === "POST") {
+      return jsonResponse({
+        exportPackage: {
+          id: "export-package-test",
+          reportId: JSON.parse(String(init?.body ?? "{}")).reportId,
+          generatedAt: "2026-06-03T18:00:00.000Z",
+          reviewPdfName: "review.txt",
+          spreadsheetName: "entry.csv",
+          receiptsZipName: "receipts.zip",
+          declarationPdfNames: [],
+          reconciliationNotesName: "reconciliation.txt"
+        },
+        downloadUrl: "/api/export-packages/export-package-test/download",
+        email: {
+          messageId: "agentmail-message-1",
+          threadId: "agentmail-thread-1",
+          recipient: "thiago.oliveira@arcelormittal.com",
+          subject: "Expense Me Export Package - June Customer Visit"
+        }
+      });
+    }
+
     if (url === "/api/export-packages/export-package-test/download" && method === "GET") {
       return Promise.resolve(new Response(new Uint8Array([80, 75, 3, 4]), {
         headers: { "Content-Type": "application/zip" }
@@ -901,6 +923,7 @@ describe("mobile app shell", () => {
 
     await user.click(screen.getByRole("button", { name: "Export" }));
     await user.click(screen.getByRole("button", { name: "Generate Export Package" }));
+    await user.click(screen.getByRole("button", { name: "Save to Device" }));
 
     await waitFor(() => expect(click).toHaveBeenCalled());
     const fetchMock = vi.mocked(fetch);
@@ -934,6 +957,7 @@ describe("mobile app shell", () => {
 
     await user.click(screen.getByRole("button", { name: "Export" }));
     await user.click(screen.getByRole("button", { name: "Generate Export Package" }));
+    await user.click(screen.getByRole("button", { name: "Save to Device" }));
 
     await waitFor(() => expect(share).toHaveBeenCalled());
     expect(canShare).toHaveBeenCalledWith({
@@ -945,5 +969,31 @@ describe("mobile app shell", () => {
     });
     expect(click).not.toHaveBeenCalled();
     expect(createObjectURL).not.toHaveBeenCalled();
+  });
+
+  it("emails cloud Export Packages to the configured work address", async () => {
+    const user = userEvent.setup();
+    seedReadyExportState();
+    await renderLoadedApp();
+
+    await user.click(screen.getByRole("button", { name: "Export" }));
+    await user.click(screen.getByRole("button", { name: "Generate Export Package" }));
+    await user.click(screen.getByRole("button", { name: "Email to Work" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Export Package emailed to thiago.oliveira@arcelormittal.com.")).toBeInTheDocument();
+    });
+    const fetchMock = vi.mocked(fetch);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/export-packages/email",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          reportId: "report-export-ready",
+          employeeName: "Thiago Oliveira",
+          reportReference: "report-export-ready"
+        })
+      })
+    );
   });
 });

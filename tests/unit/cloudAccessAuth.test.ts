@@ -56,6 +56,16 @@ describe("Cloudflare Access auth", () => {
     ).rejects.toMatchObject({ status: 403 });
   });
 
+  it("rejects verified Access users when ACCESS_ALLOWED_EMAIL is unset", async () => {
+    const request = new Request("https://expense.mac-tbo.com/api/bootstrap", {
+      headers: { "CF-Access-Jwt-Assertion": "jwt" }
+    });
+
+    await expect(
+      requireAccessUser(request, {} as CloudflareEnv, async () => ({ sub: "user-1", email: "thiago@example.com" }))
+    ).rejects.toMatchObject({ status: 403 });
+  });
+
   it("allows explicit local test identity only in local mode", async () => {
     const request = new Request("http://localhost/api/bootstrap", {
       headers: { "x-expense-me-local-user": " thiago@example.com " }

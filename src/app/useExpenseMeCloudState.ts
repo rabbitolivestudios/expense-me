@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { CloudRepository, type CloudExportPackageResult } from "../client/cloudRepository";
+import { CloudRepository, type CloudExportPackageEmailResult, type CloudExportPackageResult } from "../client/cloudRepository";
 import { hasMigrationMarker, markMigrationComplete, readV1LocalSnapshot } from "../client/localSnapshot";
 import { normalizeCloudSnapshot } from "../cloudflare/appSnapshot";
 import type { CloudSnapshot } from "../cloudflare/types";
@@ -52,6 +52,7 @@ export interface ExpenseMeCloudState {
   importStatementCharges: (charges: StatementCharge[], reportId?: string) => Promise<CloudSnapshot>;
   syncEmail: (reportId?: string) => Promise<CloudSnapshot>;
   createExportPackage: (reportId: string) => Promise<CloudExportPackageResult>;
+  emailExportPackage: (reportId: string) => Promise<CloudExportPackageEmailResult>;
 }
 
 export function useExpenseMeCloudState(repository?: CloudRepository): ExpenseMeCloudState {
@@ -136,6 +137,11 @@ export function useExpenseMeCloudState(repository?: CloudRepository): ExpenseMeC
       mutate(() => cloudRepository.syncEmail(reportId)),
     createExportPackage: (reportId: string) =>
       cloudRepository.createExportPackage(reportId, {
+        employeeName: "Thiago Oliveira",
+        reportReference: reportId
+      }),
+    emailExportPackage: (reportId: string) =>
+      cloudRepository.emailExportPackage(reportId, {
         employeeName: "Thiago Oliveira",
         reportReference: reportId
       })

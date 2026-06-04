@@ -29,7 +29,7 @@ The current app has the first V1 implementation of expenses, card reconciliation
 - Meal attendee count support
 - Card statement import and matching for CSV, QBO/OFX, and XLSX exports, including statement-provided merchant city/country when available
 - Swipe-left and detail-screen expense deletion with confirmation
-- Export package generation with the entry spreadsheet plus PDF receipt copies, PDF declarations, PDF reconciliation notes, and a PDF expense index. When `GOTENBERG_URL` is configured, HTML email receipts are printed through Chromium so the exported receipt PDF preserves the original email formatting.
+- Export package generation with the entry spreadsheet plus PDF receipt copies, PDF declarations, PDF reconciliation notes, and a PDF expense index. When `GOTENBERG_URL` is configured, HTML email receipts are printed through Chromium so the exported receipt PDF preserves the original email formatting. V1.5 can either save the ZIP to the device or email it through AgentMail to the configured work address.
 
 ## Documentation
 
@@ -83,10 +83,11 @@ V1 remains live on Vercel at `expense-me-tbo.vercel.app` as the fallback product
 ### V1.5 Operational Notes
 
 - 2026-06-03 mobile hotfix: the browser client calls `globalThis.fetch` through a wrapper for the default CloudRepository fetcher. This prevents iOS Safari/Chrome from invoking `fetch` with the repository instance as `this`, which surfaced as `Can only call Window.fetch on instances of Window` and also caused Inbox email sync to fail from the phone.
+- Cloudflare Access is fail-closed for V1.5 single-user mode: `ACCESS_ALLOWED_EMAIL` must be configured, or verified Access users are rejected instead of sharing the single workspace.
 - If a phone still shows that old fetch error after deployment, close/reopen the tab or hard-refresh the PWA so the service worker picks up the current bundle.
 - iOS Home Screen icons use the root `apple-touch-icon*.png` files and public Pages-hosted `apple-touch-icon` links. Keep those icon links off the Access-protected `expense.mac-tbo.com` host so iOS can fetch the icon while creating the Home Screen web clip.
 - Cloud Export Package downloads fetch the zip bytes and save a Blob named after the selected Expense Folder. The PWA service worker must denylist `/api/*` navigations so API download routes cannot be served as cached app-shell HTML.
-- iPhone export should use the browser file-share sheet when available so the generated zip can be sent to Mail or saved elsewhere. Download remains the fallback for browsers without file sharing.
+- iPhone export should use the browser file-share sheet when available so the generated zip can be sent to Mail or saved elsewhere. Download remains the fallback for browsers without file sharing. V1.5 also supports server-side Export Package email delivery: `POST /api/export-packages/email` creates the ZIP, attaches it to an AgentMail outbound message, and sends it to `EXPORT_PACKAGE_EMAIL_TO`.
 - Export Package zip entries use short receipt filenames and omit standalone folder entries for better iOS extraction compatibility.
 - Email receipt artifacts store the original AgentMail HTML when available. Re-syncing AgentMail upgrades older text-only email artifacts to HTML without duplicating the Expense, and Export Package generation can also fetch AgentMail detail on demand for older text-only email artifacts before printing them. Configure `GOTENBERG_URL` to print those HTML receipts into browser-rendered PDFs during Export Package generation.
 
@@ -102,6 +103,7 @@ npx wrangler pages secret put ACCESS_ALLOWED_EMAIL --project-name expense-me-v15
 npx wrangler pages secret put AGENTMAIL_API_KEY --project-name expense-me-v15
 npx wrangler pages secret put AGENTMAIL_INBOX_ID --project-name expense-me-v15
 npx wrangler pages secret put AGENTMAIL_WEBHOOK_SECRET --project-name expense-me-v15
+npx wrangler pages secret put EXPORT_PACKAGE_EMAIL_TO --project-name expense-me-v15
 npx wrangler pages secret put GOTENBERG_URL --project-name expense-me-v15
 ```
 

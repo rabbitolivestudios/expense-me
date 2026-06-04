@@ -323,6 +323,11 @@ export default function App() {
     await shareOrDownloadZip(blob, `Expense-Me-${safeDownloadName(reportName)}.zip`);
   }
 
+  async function emailCloudExportPackage(reportId: string) {
+    const result = await cloudState.emailExportPackage(reportId);
+    return result.email.recipient;
+  }
+
   return (
     <AppShell active={screen} onChange={changeScreen}>
       {cloudState.error && (
@@ -404,6 +409,7 @@ export default function App() {
           receiptArtifacts={receiptArtifacts}
           onBack={() => changeScreen("Inbox")}
           onGenerateExportPackage={generateCloudExportPackage}
+          onEmailExportPackage={emailCloudExportPackage}
         />
       )}
     </AppShell>

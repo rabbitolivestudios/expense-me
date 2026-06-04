@@ -24,7 +24,9 @@ function isLoopbackHostname(hostname: string) {
 }
 
 function isAllowedEmail(email: string, env: CloudflareEnv) {
-  return !env.ACCESS_ALLOWED_EMAIL || email.toLowerCase() === env.ACCESS_ALLOWED_EMAIL.toLowerCase();
+  const allowedEmail = env.ACCESS_ALLOWED_EMAIL;
+  if (!allowedEmail) return false;
+  return email.toLowerCase() === allowedEmail.toLowerCase();
 }
 
 function isExplicitlyAllowedEmail(email: string, env: CloudflareEnv) {

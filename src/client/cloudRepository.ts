@@ -6,6 +6,15 @@ export interface CloudExportPackageResult {
   downloadUrl: string;
 }
 
+export interface CloudExportPackageEmailResult extends CloudExportPackageResult {
+  email: {
+    messageId: string;
+    threadId: string;
+    recipient: string;
+    subject: string;
+  };
+}
+
 function requireSnapshot(body: ApiSnapshotBody): CloudSnapshot {
   if (!body.snapshot) {
     throw new Error("Cloud snapshot response was invalid.");
@@ -92,6 +101,17 @@ export class CloudRepository {
     options: { employeeName?: string; reportReference?: string } = {}
   ): Promise<CloudExportPackageResult> {
     return readApiJson<CloudExportPackageResult>(await this.fetcher("/api/export-packages", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reportId, ...options })
+    }));
+  }
+
+  async emailExportPackage(
+    reportId: string,
+    options: { employeeName?: string; reportReference?: string } = {}
+  ): Promise<CloudExportPackageEmailResult> {
+    return readApiJson<CloudExportPackageEmailResult>(await this.fetcher("/api/export-packages/email", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ reportId, ...options })
