@@ -25,6 +25,7 @@ The current app has the first V1 implementation of expenses, card reconciliation
 - Camera/image/PDF/manual intake with browser-local OCR and PDF text extraction
 - AgentMail inbox sync for `expense-me@agentmail.to`, including full message detail parsing, Uber pickup/dropoff descriptions, stored HTML email receipts, and repair of older summary-only imports
 - V1.5 AgentMail webhook intake for automatic received-message sync after Cloudflare deployment
+- AgentMail sync recovers partial prior imports where an email artifact was written before its matching Expense
 - Company-style expense type, sub-expense type, region, and country fields
 - Meal attendee count support
 - Card statement import and matching for CSV, QBO/OFX, and XLSX exports, including statement-provided merchant city/country when available
@@ -90,6 +91,7 @@ V1 remains live on Vercel at `expense-me-tbo.vercel.app` as the fallback product
 - iPhone export should use the browser file-share sheet when available so the generated zip can be sent to Mail or saved elsewhere. Download remains the fallback for browsers without file sharing. V1.5 also supports server-side Export Package email delivery: `POST /api/export-packages/email` creates the ZIP, attaches it to an AgentMail outbound message, and sends it to `EXPORT_PACKAGE_EMAIL_TO`.
 - Export Package zip entries use short receipt filenames and omit standalone folder entries for better iOS extraction compatibility.
 - Email receipt artifacts store the original AgentMail HTML when available. Re-syncing AgentMail upgrades older text-only email artifacts to HTML without duplicating the Expense, and Export Package generation can also fetch AgentMail detail on demand for older text-only email artifacts before printing them. Configure `GOTENBERG_URL` to print those HTML receipts into browser-rendered PDFs during Export Package generation.
+- If AgentMail sync is interrupted after storing an email artifact but before creating the matching Expense, the next sync updates that existing artifact by version and creates the missing Expense instead of returning a stale-record 502.
 
 Required Wrangler setup commands:
 

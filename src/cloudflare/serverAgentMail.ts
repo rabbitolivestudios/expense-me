@@ -246,7 +246,9 @@ export async function syncServerAgentMail(
 
     for (const bundle of newBundles) {
       const expense = { ...bundle.expense, reportId };
-      await repository.upsertReceiptArtifact(context, artifactWithBodyData(bundle.artifact), {});
+      await repository.upsertReceiptArtifact(context, artifactWithBodyData(bundle.artifact), {
+        expectedVersion: snapshot.recordVersions.receiptArtifacts[bundle.artifact.id]
+      });
       await repository.upsertExpense(context, expense, {});
       expenseIdsForFolder.push(expense.id);
       importedCount += 1;

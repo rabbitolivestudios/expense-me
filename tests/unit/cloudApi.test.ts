@@ -41,6 +41,7 @@ function repositoryStub() {
     upsertExpenseFolder: vi.fn().mockResolvedValue({ snapshot }),
     deleteExpenseFolder: vi.fn().mockResolvedValue({ snapshot }),
     upsertReceiptArtifact: vi.fn().mockResolvedValue({ snapshot }),
+    addExpensesToFolder: vi.fn().mockResolvedValue(undefined),
     importStatementCharges: vi.fn().mockResolvedValue({ snapshot }),
     createExportPackage: vi.fn().mockResolvedValue({
       exportPackage: {
@@ -554,6 +555,70 @@ describe("cloud API router", () => {
     expect(repository.recordSyncRun).toHaveBeenCalledWith(
       context,
       expect.objectContaining({ source: "AgentMail", attemptedCount: 1, importedCount: 1, repairedCount: 0, skippedCount: 0 })
+    );
+  });
+
+  it("recovers when a previous sync left an email artifact without its expense", async () => {
+    const repository = repositoryStub();
+    repository.getSnapshot.mockResolvedValue({
+      ...snapshot,
+      expenses: [],
+      receiptArtifacts: [{
+        id: "art-email-m1",
+        artifactType: "EmailBody",
+        sourceMessageId: "m1",
+        mimeType: "text/plain",
+        storageKey: "agentmail/m1",
+        createdAt: "2026-06-03T14:00:00.000Z",
+        extractedText: "old partial artifact"
+      }],
+      reports: [{ id: "report-active", name: "Active", expenseIds: [], status: "Draft", dateRangeLabel: "", createdAt: "" }],
+      recordVersions: {
+        expenses: {},
+        reports: { "report-active": 3 },
+        receiptArtifacts: { "art-email-m1": 7 },
+        statementCharges: {},
+        exportPackages: {}
+      }
+    });
+    repository.upsertReceiptArtifact.mockImplementation(async (_context, artifact, options) => {
+      if (artifact.id === "art-email-m1" && options.expectedVersion !== 7) {
+        throw new VersionConflictError();
+      }
+
+      return { snapshot };
+    });
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(mockJsonResponse({ messages: [{ message_id: "m1", subject: "Uber receipt", timestamp: "2026-06-03T14:00:00.000Z" }] }))
+      .mockResolvedValueOnce(mockJsonResponse({ message_id: "m1", text: "Uber\nJun 3, 2026\nTotal $18.42", timestamp: "2026-06-03T14:00:00.000Z" }));
+    vi.stubGlobal("fetch", fetcher);
+
+    const response = await handleApiRequest(
+      localRequest("/api/email/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reportId: "report-active" })
+      }),
+      { ...env, AGENTMAIL_API_KEY: "test-key", AGENTMAIL_BASE_URL: "https://agentmail.test" },
+      { repository: repository as never }
+    );
+
+    expect(response.status).toBe(200);
+    expect(repository.upsertReceiptArtifact).toHaveBeenCalledWith(
+      context,
+      expect.objectContaining({ id: "art-email-m1", sourceMessageId: "m1" }),
+      { expectedVersion: 7 }
+    );
+    expect(repository.upsertExpense).toHaveBeenCalledWith(
+      context,
+      expect.objectContaining({ id: "exp-email-m1", reportId: "report-active", sourceType: "Email" }),
+      {}
+    );
+    expect(repository.addExpensesToFolder).toHaveBeenCalledWith(
+      context,
+      expect.any(Object),
+      "report-active",
+      ["exp-email-m1"]
     );
   });
 
