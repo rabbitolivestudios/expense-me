@@ -4,6 +4,7 @@ import { reconcileStatementCharges } from "../features/statements/reconciliation
 import { reportLabelForExpenseIds } from "../app/appState";
 import { normalizeCloudSnapshot } from "./appSnapshot";
 import { loadArtifactDataUrl, storeArtifactData } from "./artifactStore";
+import { hydrateEmailArtifactHtmlForExport } from "./emailArtifactHtml";
 import { hasGotenbergRenderer, renderHtmlToPdfWithGotenberg } from "./gotenbergPdf";
 import { decodePayload, encodePayload, stripArtifactDataUrl } from "./schema";
 import type { AccessUser, CloudSnapshot, CloudflareEnv, WorkspaceContext } from "./types";
@@ -500,13 +501,20 @@ export class D1ExpenseMeRepository {
 
     const packageExpenses = snapshot.expenses.filter((expense) => report.expenseIds.includes(expense.id));
     const receiptArtifactIds = new Set(packageExpenses.flatMap((expense) => expense.receiptArtifactIds));
+    const canRenderHtmlReceipts = hasGotenbergRenderer(this.env);
     const receiptArtifacts = await Promise.all(
       snapshot.receiptArtifacts
         .filter((artifact) => receiptArtifactIds.has(artifact.id))
-        .map(async (artifact) => ({
-          ...artifact,
-          dataUrl: await loadArtifactDataUrl(this.env, artifact)
-        }))
+        .map(async (artifact) => {
+          const artifactWithData = {
+            ...artifact,
+            dataUrl: await loadArtifactDataUrl(this.env, artifact)
+          };
+
+          return canRenderHtmlReceipts
+            ? hydrateEmailArtifactHtmlForExport(this.env, artifactWithData)
+            : artifactWithData;
+        })
     );
     const archive = await buildExportPackageZip({
       report,
@@ -514,7 +522,7 @@ export class D1ExpenseMeRepository {
       receiptArtifacts,
       employeeName: options.employeeName,
       reportReference: options.reportReference,
-      renderHtmlToPdf: hasGotenbergRenderer(this.env)
+      renderHtmlToPdf: canRenderHtmlReceipts
         ? (html, renderContext) => renderHtmlToPdfWithGotenberg(this.env, html, renderContext)
         : undefined
     });

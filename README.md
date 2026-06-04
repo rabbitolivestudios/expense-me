@@ -88,7 +88,7 @@ V1 remains live on Vercel at `expense-me-tbo.vercel.app` as the fallback product
 - Cloud Export Package downloads fetch the zip bytes and save a Blob named after the selected Expense Folder. The PWA service worker must denylist `/api/*` navigations so API download routes cannot be served as cached app-shell HTML.
 - iPhone export should use the browser file-share sheet when available so the generated zip can be sent to Mail or saved elsewhere. Download remains the fallback for browsers without file sharing.
 - Export Package zip entries use short receipt filenames and omit standalone folder entries for better iOS extraction compatibility.
-- Email receipt artifacts store the original AgentMail HTML when available. Re-syncing AgentMail upgrades older text-only email artifacts to HTML without duplicating the Expense. Configure `GOTENBERG_URL` to print those HTML receipts into browser-rendered PDFs during Export Package generation.
+- Email receipt artifacts store the original AgentMail HTML when available. Re-syncing AgentMail upgrades older text-only email artifacts to HTML without duplicating the Expense, and Export Package generation can also fetch AgentMail detail on demand for older text-only email artifacts before printing them. Configure `GOTENBERG_URL` to print those HTML receipts into browser-rendered PDFs during Export Package generation.
 
 Required Wrangler setup commands:
 

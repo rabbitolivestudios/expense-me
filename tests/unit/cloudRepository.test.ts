@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import JSZip from "jszip";
 import { artifactObjectKey, dataUrlToBytes, loadArtifactDataUrl, storeArtifactData } from "../../src/cloudflare/artifactStore";
 import { D1ExpenseMeRepository, NonEmptyExpenseFolderError, VersionConflictError } from "../../src/cloudflare/d1Repository";
 import type { CloudflareEnv, WorkspaceContext } from "../../src/cloudflare/types";
@@ -38,6 +39,10 @@ function encodedRow(value: unknown, version = 1) {
 }
 
 describe("D1 Expense Me repository", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   it("creates or returns the personal workspace and prepares the expected user insert SQL", async () => {
     const db = createDb((sql) => statement({ first: sql.includes("SELECT id FROM users") ? { id: "user-1" } : null }));
     const repo = new D1ExpenseMeRepository({ EXPENSE_ME_DB: db } as unknown as CloudflareEnv);
@@ -371,6 +376,88 @@ describe("D1 Expense Me repository", () => {
     expect(repo.upsertReceiptArtifact).toHaveBeenCalledWith(context(), seedArtifacts[0], { force: true });
     expect(repo.upsertStatementCharge).toHaveBeenCalledWith(context(), seedStatementCharges[0], { force: true });
     expect(result).toEqual({ snapshot: cloudSnapshot });
+  });
+
+  it("hydrates old text-only AgentMail artifacts before rendering export receipt PDFs", async () => {
+    const emailArtifact: ReceiptArtifact = {
+      id: "art-email-message-1",
+      artifactType: "EmailBody",
+      sourceMessageId: "message-1",
+      mimeType: "text/plain",
+      storageKey: "workspace-personal/artifacts/art-email-message-1/original",
+      createdAt: "2026-06-03T14:00:00.000Z",
+      extractedText: "Subject: Your trip with Uber\nTotal $18.42"
+    };
+    const expense = {
+      ...seedExpenses[0],
+      id: "exp-email-message-1",
+      sourceType: "Email" as const,
+      reportId: "report-email",
+      receiptArtifactIds: [emailArtifact.id],
+      merchant: "Uber",
+      description: "Uber",
+      city: "Chicago",
+      originalAmount: 18.42,
+      finalUsdAmount: 18.42
+    };
+    const report = {
+      ...seedReports[0],
+      id: "report-email",
+      name: "Email Export",
+      expenseIds: [expense.id]
+    };
+    const get = vi.fn().mockResolvedValue({
+      arrayBuffer: async () => new TextEncoder().encode("Subject: Your trip with Uber\nTotal $18.42").buffer
+    });
+    const put = vi.fn().mockResolvedValue(undefined);
+    const db = createDb((sql) => {
+      if (sql.includes("FROM expenses")) return statement({ all: [encodedRow(expense)] });
+      if (sql.includes("FROM expense_folders")) return statement({ all: [encodedRow(report)] });
+      if (sql.includes("FROM receipt_artifacts")) return statement({ all: [encodedRow(emailArtifact)] });
+      if (sql.includes("FROM statement_charges")) return statement({ all: [] });
+      if (sql.includes("SELECT version FROM export_packages")) return statement({ first: null });
+      if (sql.includes("FROM export_packages")) return statement({ all: [] });
+      return statement();
+    });
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        message_id: "message-1",
+        html: "<html><body><table><tr><td>Uber formatted receipt</td></tr></table></body></html>"
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" }
+      }))
+      .mockResolvedValueOnce(new Response("%PDF-gotenberg-email", {
+        status: 200,
+        headers: { "Content-Type": "application/pdf" }
+      }));
+    vi.stubGlobal("fetch", fetcher);
+    const repo = new D1ExpenseMeRepository({
+      EXPENSE_ME_DB: db,
+      EXPENSE_ME_ARTIFACTS: { get, put },
+      AGENTMAIL_API_KEY: "test-key",
+      AGENTMAIL_BASE_URL: "https://agentmail.test",
+      GOTENBERG_URL: "https://gotenberg.test"
+    } as unknown as CloudflareEnv);
+
+    const result = await repo.createExportPackage(context(), {
+      reportId: report.id,
+      employeeName: "Thiago Oliveira",
+      reportReference: "EXP-1"
+    });
+    const zipBytes = put.mock.calls.find(([key]) => String(key).includes("export-packages"))?.[1] as Uint8Array;
+    const zip = await JSZip.loadAsync(zipBytes);
+
+    expect(result.exportPackage.reportId).toBe(report.id);
+    await expect(zip.file("receipts/receipt-001-email-receipt.pdf")?.async("string")).resolves.toBe("%PDF-gotenberg-email");
+    expect(fetcher).toHaveBeenCalledWith(
+      "https://agentmail.test/v0/inboxes/expense-me%40agentmail.to/messages/message-1",
+      { headers: { Authorization: "Bearer test-key" } }
+    );
+    expect(fetcher).toHaveBeenCalledWith(
+      "https://gotenberg.test/forms/chromium/convert/html",
+      expect.objectContaining({ method: "POST" })
+    );
   });
 });
 
